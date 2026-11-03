@@ -1,6 +1,13 @@
 export const MAX_FILE_BYTES = 20 * 1024 * 1024
 
 const COMMANDS = new Set(['start', 'sessions', 'status', 'new', 'help', 'model'])
+const BUTTON_COMMANDS = new Map([
+  ['сессии', 'sessions'],
+  ['новая', 'new'],
+  ['модель', 'model'],
+  ['статус', 'status'],
+  ['помощь', 'help'],
+])
 
 export function isOwner(userID, ownerID) {
   if (ownerID === null || ownerID === undefined || ownerID === '') return false
@@ -10,7 +17,10 @@ export function isOwner(userID, ownerID) {
 export function parseCommand(text) {
   if (typeof text !== 'string') return null
   const trimmed = text.trim()
-  if (!trimmed.startsWith('/')) return null
+  if (!trimmed.startsWith('/')) {
+    const buttonCommand = BUTTON_COMMANDS.get(trimmed.toLocaleLowerCase('ru-RU'))
+    return buttonCommand ? { name: buttonCommand, args: '' } : null
+  }
   const [raw, ...rest] = trimmed.split(/\s+/)
   const name = raw.slice(1).split('@')[0].toLowerCase()
   if (!COMMANDS.has(name)) return { name: 'unknown', args: rest.join(' ') }

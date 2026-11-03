@@ -39,3 +39,12 @@ test('файл 5 МБ принимается', () => {
 test('граница лимита включительно', () => {
   assert.deepEqual(checkFileSize(MAX_FILE_BYTES), { ok: true })
 })
+
+test('подписи постоянной клавиатуры распознаются как команды', () => {
+  assert.deepEqual(parseCommand('Сессии'), { name: 'sessions', args: '' })
+  assert.deepEqual(parseCommand('Новая'), { name: 'new', args: '' })
+  assert.deepEqual(parseCommand('Модель'), { name: 'model', args: '' })
+  assert.deepEqual(parseCommand('Статус'), { name: 'status', args: '' })
+  assert.deepEqual(parseCommand('Помощь'), { name: 'help', args: '' })
+  assert.equal(parseCommand('просто текст'), null)
+})
