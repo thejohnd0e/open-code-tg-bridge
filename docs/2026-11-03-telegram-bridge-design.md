@@ -1,122 +1,135 @@
-# Telegram как постоянный интерфейс к OpenCode — дизайн
+# Telegram as a persistent interface to OpenCode — design
 
-Дата: 2026-11-03. Статус: исходный дизайн; поведение уведомлений заменено
-одобренным [дизайном итогов всех сессий](superpowers/specs/2026-11-03-all-session-completion-notifications-design.md).
+Date: 2026-11-03. Status: original design; notification behavior was superseded
+by the approved [all-session completion notification design](superpowers/specs/2026-11-03-all-session-completion-notifications-design.md).
 
-## Зачем
+## Purpose
 
-Дотянуться до OpenCode с телефона: подкинуть фото, файл или заметку в любую
-сессию любого проекта, прочитать ответ и подтвердить опасную команду. Telegram —
-второй клиент к тому же серверу, что TUI и RDP, а не отдельный «карманный бот».
+Access OpenCode from a phone: send a photo, file, or note to any session in any
+project, read the response, and approve a potentially dangerous command. Telegram
+is another client for the same server used by TUI and RDP, not a separate
+“pocket bot.”
 
-## Проверено на живой системе
+## Verified on the live system
 
-- Windows-сервер, OpenCode v2.2.5, сервер слушает `127.0.0.1:28894`; без токена
-  отвечает 401. Токен лежит в `~/.config/opencode/service.json` (`password`).
-- Авторизация сервера — HTTP Basic, логин `opencode`, пароль из
-  `service.json` (`curl -u opencode:<password> ...` → 200, без него 401).
-- API умеет всё нужное:
-  - `GET /api/session` — сессии с `projectID` и `location` (все проекты);
-  - `POST /api/session` (`session.create`) — создать сессию в каталоге, модель
-    задаётся отдельно через `session.update`;
-  - `POST /api/session/{id}/prompt` — отправить промпт; ответ приходит сразу и
-    содержит поставленный в очередь элемент inbox (`Session.Inbox.User`), то
-    есть сообщение не ждёт завершения хода;
-  - `GET /api/session/{id}/inbox`, `DELETE .../inbox/{inboxID}`,
-    `PATCH .../inbox/{inboxID}` (сменить `steer|queue`) — очередь и отмена;
-  - `POST /api/session/{id}/inbox` — пользовательское сообщение `{text, files[]}`,
-    файл передаётся base64 (`source: inline`), диски отправителя и получателя
-    значения не имеют;
-  - `GET /api/session/{id}/message` — история сообщений;
-  - `GET /api/event` — **SSE**: строки `data: {"id","type","data","location"}` и
-    `: heartbeat`; типы вида `server.connected`, `shell.exited` — отсюда берём
-    события сессий для зеркала;
-  - `GET /api/session/{id}/permission`, `POST /api/session/{id}/permission/{requestID}/reply`
-    с решением `once | always | reject` — те самые подтверждения.
-- `api.telegram.org` доступен и с Windows (302), и с Linux host (302 за 0.55 с) —
-  прокси не нужен, Telegram здесь не заблокирован.
-- Bot API отдаёт боту файлы до 20 МБ; base64 добавляет ~33 %.
-- Дешёвые модели принимают изображения: `gpt-6-luna` (0.10 / 0.50 $ за млн,
-  text+image+pdf), `claude-haiku-5-5`, `glm-5.3-flash`, `qwen3.8-flash`.
+- The Windows server runs OpenCode v2.2.5, listening on `127.0.0.1:28894`; without
+  a token, it returns 401. The token is in `~/.config/opencode/service.json`
+  (`password` field).
+- Server authentication is HTTP Basic, username `opencode`, password from
+  `service.json` (`curl -u opencode:<password> ...` returns 200; without it, 401).
+- The API provides the required functionality:
+  - `GET /api/session` lists sessions with `projectID` and `location` across all
+    projects.
+  - `POST /api/session` (`session.create`) creates a session in a directory; the
+    model is set separately through `session.update`.
+  - `POST /api/session/{id}/prompt` submits a prompt and immediately returns the
+    queued inbox item (`Session.Inbox.User`); the caller does not wait for the turn
+    to finish.
+  - `GET /api/session/{id}/inbox`, `DELETE .../inbox/{inboxID}`, and
+    `PATCH .../inbox/{inboxID}` (switch `steer|queue`) manage queued work and
+    cancellation.
+  - `POST /api/session/{id}/inbox` accepts a user message `{text, files[]}`;
+    files are base64 encoded (`source: inline`), so sender and receiver disks do
+    not need to match.
+  - `GET /api/session/{id}/message` returns message history.
+  - `GET /api/event` provides **SSE** lines such as
+    `data: {"id","type","data","location"}` and `: heartbeat`; event types
+    such as `server.connected` and `shell.exited` are available for session
+    monitoring.
+  - `GET /api/session/{id}/permission` and
+    `POST /api/session/{id}/permission/{requestID}/reply` support the approval
+    decisions `once | always | reject`.
+- `api.telegram.org` is reachable from Windows (302) and from Linux host (302 in
+  0.55 seconds); no proxy is required in this environment.
+- The Bot API allows the bot to download files up to 20 MB; base64 adds about 33%.
+- Lower-cost models that accept images include `gpt-6-luna` (0.10 / 0.50 USD per
+  million tokens, text + image + PDF), `claude-haiku-5-5`, `glm-5.3-flash`, and
+  `qwen3.8-flash`.
 
-## Цели v1
+## Version 1 goals
 
-1. Бот слушает ровно один Telegram-аккаунт — владельца. Любой другой id не
-   получает ни ответа, ни файла, ни списка сессий; только запись в лог.
-2. `/sessions` — список сессий всех проектов (название, проект, время), выбор
-   одной кнопкой/номером; `/status` — какая выбрана.
-3. Всё отправленное после выбора (текст, фото, документ) уходит в эту сессию;
-   ответы агента приходят в чат, длинные делятся на части.
-4. Зеркало работает и когда работу ведут из TUI/RDP: сообщения выбранной сессии
-   пересылаются в чат.
-5. Запрос подтверждения приходит сообщением с кнопками «Разрешить» /
-   «Разрешить всегда» / «Запретить» → `permission/{id}/reply`.
-6. `/new` — отдельная лёгкая сессия на `gpt-6-luna` в нейтральной папке.
+1. Listen to exactly one Telegram account: the owner. Other IDs receive no reply,
+   file, or session list; only a log entry is created.
+2. `/sessions` lists sessions across all projects (title, project, time) and lets
+   the owner select one by button or number; `/status` shows the current selection.
+3. After selection, text, photos, and documents are sent to that session; agent
+   responses arrive in the chat and long responses are split into parts.
+4. Monitoring also works when work is done through TUI/RDP: messages from the
+   selected session are forwarded to Telegram.
+5. Approval requests arrive as messages with **Allow**, **Always allow**, and
+   **Reject** buttons, calling `permission/{id}/reply`.
+6. `/new` creates a separate lightweight session using `gpt-6-luna` in a neutral
+   directory.
 
-## Не цели v1
+## Not goals for version 1
 
-Интерактивные формы (`/form`), голос в текст, несколько пользователей, webhook,
-пересылка файлов из сессии обратно в Telegram, полноценный TUI в чате.
+Interactive forms (`/form`), voice transcription, multiple users, webhooks,
+forwarding files from a session back to Telegram, or a full TUI in chat.
 
-## Анти-цели
+## Anti-goals
 
-Бот, доступный чужому аккаунту или группе; токены в репозитории; API OpenCode,
-открытый в интернет; «тихий» авто-approve вместо явного подтверждения.
+Making the bot accessible to other accounts or groups; committing tokens;
+exposing the OpenCode API to the internet; silently auto-approving instead of
+requiring explicit approval.
 
-## Ограничения
+## Constraints
 
-- Сессии живут на Windows-сервере. Если он недоступен, бот честно отвечает
-  «сервер недоступен», а не притворяется агентом.
-- Bot API: файлы ≤ 20 МБ (практически ~15 МБ после base64). Больше — только
-  путём на сервере («приложи `D:\...`»).
-- Публичного адреса и сертификата нет → long polling, не webhook.
+- Sessions live on the Windows server. If it is unavailable, the bot reports that
+  the server is unavailable rather than pretending to be the agent.
+- Bot API file limit is 20 MB (about 15 MB in practice after base64 overhead).
+  Larger files must be referenced by a server path, for example, “attach
+  `D:\...`.”
+- There is no public address or certificate, so use long polling rather than a
+  webhook.
 
-## Архитектура
+## Architecture
 
-- Контейнер `tg-bridge` на Linux host (192.0.2.1): Node 22 + grammY, `docker compose`
-  в `/root/TgBridge/`, `restart: unless-stopped`.
-- Доступ к API: сервер OpenCode на Windows слушает LAN
-  (`opencode serve --hostname <lan-ip> --port 28894 --service`), правило
-  брандмауэра разрешает этот порт только с 192.0.2.1, вход — HTTP Basic
-  (`opencode:<пароль из service.json>`). Обратный SSH-туннель рассмотрен и
-  отклонён владельцем: лишний процесс, который надо сторожить после перезагрузки.
-- Состояние (владелец, выбранная сессия, `update_id`, курсор SSE) — JSON на
-  docker-volume.
-- Секреты — `.env` рядом с compose (600), не в git: `TELEGRAM_BOT_TOKEN`,
-  `OPENCODE_TOKEN`, `OWNER_TELEGRAM_ID`, `OPENCODE_URL`.
+- The `tg-bridge` container runs Node 22 + grammY on Linux host (`192.0.2.1`), with
+  Docker Compose under `/root/TgBridge/` and `restart: unless-stopped`.
+- The Windows OpenCode server listens on the LAN through
+  `opencode serve --hostname <lan-ip> --port 28894 --service`; the firewall allows
+  only `192.0.2.1`, and HTTP Basic authentication is required
+  (`opencode:<password from service.json>`). A reverse SSH tunnel was considered
+  and rejected because it adds a process that must be supervised after reboots.
+- State (owner, selected session, `update_id`, and SSE cursor) is JSON on a Docker
+  volume.
+- Secrets are stored in `.env` alongside Compose (permissions `600`), not in Git:
+  `TELEGRAM_BOT_TOKEN`, `OPENCODE_TOKEN`, `OWNER_TELEGRAM_ID`, and `OPENCODE_URL`.
 
-## Принятые решения
+## Decisions
 
-- Бот живёт на Linux host, а не на Windows (просьба пользователя): Docker, логи,
-  автоперезапуск. Цена — доступ к API по LAN с ограничением по IP.
-- Модель лёгкой сессии — `gpt-6-luna`, каталог — `C:/Example/Project` (пустой,
-  не принадлежит ни одному рабочему проекту).
-- Владелец задаётся в `.env`; пока id не совпал, бот молчит и пишет id в лог,
-  чтобы владелец мог его узнать.
-- Подтверждения — только явные кнопки, без таймаута «само разрешится».
-- **Подтверждения от всех сессий**, не только от выбранной: карточка несёт имя
-  проекта и сессии, чтобы агент в другом проекте не ждал возвращения к RDP.
-  Карточка, разрешённая в TUI, помечается как решённая, а не присылается заново.
-- **После перезапуска ничего не теряется и не дублируется**: курсор потока
-  событий хранится в состоянии, при старте досылается только пропущенное,
-  включая ответ на сообщение, отправленное в момент рестарта.
+- The bot runs on Linux host, not Windows, at the owner's request: Docker, logs, and
+  automatic restarts. The tradeoff is LAN access to the API, restricted by IP.
+- Lightweight sessions use `gpt-6-luna` and `C:/Example/Project`, an empty
+  directory outside any working project.
+- The owner is configured in `.env`. Until the ID matches, the bot stays silent
+  and logs the ID so the owner can identify it.
+- Approvals require explicit buttons; they never auto-approve after a timeout.
+- **Approvals are monitored across all sessions**, not only the selected one. Each
+  card includes the project and session name, so an agent in another project does
+  not have to wait for the owner to return to RDP. A request approved in TUI is
+  treated as resolved and is not sent again.
+- **Restarts should neither lose nor duplicate work:** event cursors are persisted
+  and only missed completions are delivered after startup, including responses
+  completed while the bot was restarting.
 
-## Что решает разработчик
+## Originally open implementation choices
 
-Telegram-клиент и разбиение длинных сообщений, формат хранения состояния и
-курсора, ретраи и rate limit, формат логов и healthcheck, вид карточек
-подтверждения, обработка альбомов и подписей к фото.
+The Telegram client and long-message splitting, state/cursor format, retry and
+rate-limit behavior, log and health-check format, approval card layout, and
+handling of photo albums and captions were left to implementation.
 
-## Проверки приёмки
+## Acceptance checks
 
-1. Посторонний аккаунт пишет боту — в ответ тишина, в логе его id.
-2. `/sessions` показывает сессии разных проектов; выбор переключает цель.
-3. Фото ~5 МБ из Telegram видно в выбранной сессии.
-4. Ответ агента появляется в чате; длинный разбит на части по порядку.
-5. Запрос подтверждения приходит с кнопками; «Запретить» реально отменяет
-   выполнение, «Разрешить всегда» больше не спрашивает про этот инструмент.
-   Запрос из другой (не выбранной) сессии тоже приходит и содержит имя проекта.
-6. Перезапуск контейнера сохраняет выбранную сессию; ответ, пришедший во время
-   перезапуска, доходит после старта один раз, без дублей.
-7. `/new` создаёт сессию в `C:/Example/Project` на `gpt-6-luna`, и присланное
-   туда фото ложится в эту папку.
+1. A different Telegram account gets no response; its ID is logged.
+2. `/sessions` shows sessions from multiple projects; selecting one changes the
+   target.
+3. A roughly 5 MB Telegram photo is available in the selected session.
+4. An agent response appears in chat; a long response is split in order.
+5. An approval request arrives with buttons; **Reject** cancels the operation and
+   **Always allow** stops asking about that tool. Requests from another session
+   also arrive with the project name.
+6. Restarting the container preserves the selected session; a response completed
+   during downtime arrives once after startup.
+7. `/new` creates a session at `C:/Example/Project` with `gpt-6-luna`, and a
+   photo sent to it is stored in that directory.

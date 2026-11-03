@@ -1,49 +1,51 @@
-# Развёртывание
+# Deployment
 
-Что должно быть заранее: SSH-доступ к Linux host (192.0.2.1), администратор на
-Windows-сервере (`192.0.2.1`), созданный у @BotFather бот.
+Prerequisites: SSH access to Linux host (`192.0.2.1`), administrator access to the
+Windows server (`192.0.2.1`), and a bot created with @BotFather.
 
-## 1. Проброс API OpenCode в локальную сеть
+## 1. Expose the OpenCode API on the LAN
 
-На Windows-сервере, от администратора:
+Run as administrator on the Windows server:
 
 ```powershell
 netsh interface portproxy add v4tov4 listenaddress=192.0.2.1 listenport=28894 connectaddress=127.0.0.1 connectport=28894
 New-NetFirewallRule -DisplayName "OpenCode API for the Linux host" -Direction Inbound -Protocol TCP -LocalPort 28894 -RemoteAddress 192.0.2.1 -Action Allow
 ```
 
-Проверка с Linux host (пароль — из `~/.config/opencode/service.json`, поле `password`):
+Check from Linux host (password is the `password` field in
+`~/.config/opencode/service.json`):
 
 ```bash
-curl -s -o /dev/null -w '%{http_code}\n' -u 'opencode:<пароль>' 'http://192.0.2.1:28894/api/session?limit=1'
+curl -s -o /dev/null -w '%{http_code}\n' -u 'opencode:<password>' 'http://192.0.2.1:28894/api/session?limit=1'
 ```
 
-Ожидается `200`. Если `000` — не запущен `iphlpsvc` или адрес в правиле не тот.
+Expected: `200`. If the result is `000`, `iphlpsvc` may not be running or the
+address in the rule may be wrong.
 
-## 2. Каталог и `.env` на Linux host
+## 2. Project directory and `.env` on Linux host
 
 ```bash
 mkdir -p /root/TgBridge
-# файлы проекта: package.json, package-lock.json, src/, Dockerfile, compose.yaml
+# Project files: package.json, package-lock.json, src/, Dockerfile, compose.yaml
 ```
 
-`/root/TgBridge/.env`, права `600`, в git не попадает:
+Create `/root/TgBridge/.env` with permissions `600`; it must not be committed:
 
 ```
-TELEGRAM_BOT_TOKEN=<токен от BotFather>
+TELEGRAM_BOT_TOKEN=<BotFather token>
 OPENCODE_URL=http://192.0.2.1:28894
-OPENCODE_TOKEN=<пароль из service.json>
+OPENCODE_TOKEN=<password from service.json>
 OWNER_TELEGRAM_ID=
 LIGHT_DIR=C:/Example/Project
 LIGHT_MODEL=opencode-go/gpt-6-luna
 WHISPER_URL=http://192.0.2.1:28895
-WHISPER_TOKEN=<токен сервиса распознавания>
+WHISPER_TOKEN=<transcription service token>
 ```
 
-Токен и пароль в чат и в переписку не присылать: переносить файлом и затирать
-после (`shred -u`).
+Do not send tokens or passwords in chat or messages. Transfer them as files and
+securely remove the temporary copies afterward (for example, with `shred -u`).
 
-## 3. Сборка и первый запуск
+## 3. Build and first startup
 
 ```bash
 cd /root/TgBridge
@@ -52,43 +54,43 @@ docker compose up -d --no-build
 docker logs -f tg-bridge
 ```
 
-В логе должно появиться `bot started` и `healthz on 8080`.
+The logs should show `bot started` and `healthz on 8080`.
 
-## 4. Привязка владельца
+## 4. Set the owner
 
-Пока `OWNER_TELEGRAM_ID` пуст, бот молчит для всех и пишет id в лог. Напишите
-боту `/start` и найдите строку:
+While `OWNER_TELEGRAM_ID` is empty, the bot ignores everyone and logs their ID.
+Send `/start` to the bot and find the log entry:
 
 ```bash
 docker logs tg-bridge 2>&1 | grep unauthorized | tail -1
 # unauthorized user_id=123456789
 ```
 
-Впишите число в `.env` и пересоздайте контейнер:
+Set that number in `.env` and recreate the container:
 
 ```bash
 sed -i 's|^OWNER_TELEGRAM_ID=.*|OWNER_TELEGRAM_ID=123456789|' /root/TgBridge/.env
 docker compose up -d --no-build --force-recreate
 ```
 
-## 5. Голосовое распознавание
+## 5. Voice transcription
 
-См. [voice-service.md](voice-service.md). Без него бот отвечает на голосовые
-понятной ошибкой, остальное работает.
+See [voice-service.md](voice-service.md). Without it, the bot returns a clear
+error for voice messages; other features continue to work.
 
-## 6. Проверка
+## 6. Verification
 
-1. С чужого аккаунта — тишина.
-2. `/sessions` — список проектов.
-3. Фото 5 МБ — модель описывает картинку.
-4. `/new`, затем просьба «напиши 6000 символов» — ответ частями.
-5. Голосовое — приходит расшифровка и сообщение в сессии.
-6. Подтверждение: сессия с `permissions: [{action:"*",resource:"*",effect:"ask"}"]`
-   даёт карточку с кнопками, «Запретить» отменяет инструмент.
+1. A different account receives no response.
+2. `/sessions` lists projects.
+3. A 5 MB photo can be described by the model.
+4. Use `/new`, then ask for a 6,000-character response; it should arrive in parts.
+5. A voice message is transcribed and sent to the session.
+6. A session with `permissions: [{action:"*",resource:"*",effect:"ask"}]`
+   produces an approval card; **Reject** cancels the tool action.
 
-## Зависимости, о которых легко забыть
+## Easy-to-miss dependencies
 
-- `192.0.2.1` должен быть **постоянным**: `portproxy` привязан к адресу.
-  Сменится адрес — бот потеряет API и распознавание.
-- Правило брандмауэра разрешает один адрес; при переезде Linux host на другой IP
-  править нужно и его, и `-RemoteAddress`.
+- `192.0.2.1` must remain **static** because `portproxy` binds to that address.
+  If it changes, the bot loses access to the API and transcription service.
+- The firewall rule allows one source address. If Linux host changes IP, update both
+  the rule and its `-RemoteAddress` value.

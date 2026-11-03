@@ -1,76 +1,80 @@
-# Локальное распознавание речи
+# Local voice transcription
 
-Сервис превращает голосовые сообщения Telegram в текст. Работает на
-Windows-сервере, модель считает на видеокарте.
+This service transcribes Telegram voice messages. It runs on the Windows server
+and uses the GPU for inference.
 
-## Почему на Windows, а не на Linux host
+## Why Windows instead of Linux host
 
-На Windows-сервере CPU, ample memory и available GPU; на Linux host сетевые сервисы,
-и там же живут прокси и мониторинг. Замер: 6,6 секунды речи распознаются за
-~1 секунду на GPU. На CPU это заняло бы в разы дольше.
+The Windows server has an CPU, ample memory, and an available GPU. Linux host has
+network services and also runs the proxy and monitoring. In a measured test, 6.6 seconds
+of audio took about one second to transcribe on the GPU; CPU inference would take
+several times longer.
 
-## Состав
+## Components
 
-| Файл | Что делает |
+| File | Purpose |
 |---|---|
-| `voice-service/server.py` | FastAPI: `POST /transcribe`, `GET /healthz` |
-| `voice-service/start.cmd` | запуск uvicorn с путями к CUDA-библиотекам |
-| `C:/Example/Project` | токен доступа (в git не попадает) |
-| `C:/Example/Project` | лог сервиса |
+| `voice-service/server.py` | FastAPI endpoints: `POST /transcribe`, `GET /healthz` |
+| `voice-service/start.cmd` | Starts uvicorn with CUDA library paths |
+| `C:/Example/Project` | Access token (not in Git) |
+| `C:/Example/Project` | Service log |
 
-Модель `large-v3-turbo` (CTranslate2), устройство `cuda`, `compute_type=float16`,
-`beam_size=5`, VAD включён. Если CUDA недоступна, задайте
-`WHISPER_DEVICE=cpu` и `WHISPER_COMPUTE=int8`.
+The model is `large-v3-turbo` (CTranslate2), device `cuda`, `compute_type=float16`,
+with `beam_size=5` and VAD enabled. If CUDA is unavailable, set
+`WHISPER_DEVICE=cpu` and `WHISPER_COMPUTE=int8`.
 
-## Установка
+## Install
 
 ```powershell
 cd C:/Example/Project
 python -m venv .venv
 .\.venv\Scripts\pip install faster-whisper fastapi "uvicorn[standard]" python-multipart nvidia-cublas-cu12 nvidia-cudnn-cu12 "av>=14"
-# токен: 32 hex-символа в token.txt
+# Store a 32-character hexadecimal token in token.txt
 ```
 
-`start.cmd` добавляет в `PATH` каталоги `cublas\bin` и `cudnn\bin` из
-`site-packages\nvidia` — без этого `ctranslate2` не находит DLL.
+`start.cmd` adds the `cublas\bin` and `cudnn\bin` directories from
+`site-packages\nvidia` to `PATH`; without them, `ctranslate2` cannot find its DLLs.
 
-## Автозапуск
+## Start automatically
 
 ```powershell
 schtasks /Create /TN "Whisper local" /TR "C:/Example/Project" /SC ONSTART /RU SYSTEM /RL HIGHEST /F
 ```
 
-Задача от `SYSTEM`, поэтому переживает выход из сеанса RDP. После реальной
-перезагрузки сервера это ещё не проверялось (см. `TODO.md`).
+The task runs as `SYSTEM`, so it survives RDP sign-out. A real server reboot has
+not yet been tested (see `TODO.md`).
 
-## Доступ из контейнера
+## Access from the container
 
 ```powershell
 netsh interface portproxy add v4tov4 listenaddress=192.0.2.1 listenport=28895 connectaddress=127.0.0.1 connectport=28895
 New-NetFirewallRule -DisplayName "Whisper for the Linux host" -Direction Inbound -Protocol TCP -LocalPort 28895 -RemoteAddress 192.0.2.1 -Action Allow
 ```
 
-Проверка с Linux host: `curl -s -o /dev/null -w '%{http_code}\n' http://192.0.2.1:28895/healthz`
-→ `200`.
+Check from Linux host:
+`curl -s -o /dev/null -w '%{http_code}\n' http://192.0.2.1:28895/healthz`
+should return `200`.
 
 ## API
 
 ```
 POST /transcribe
-  headers: x-whisper-token: <токен>
+  headers: x-whisper-token: <token>
   multipart: file=@voice.ogg;type=audio/ogg
   → {"text": "…", "language": "ru", "duration": 6.62}
 
 GET /healthz → {"ok": true, "model": "large-v3-turbo", "device": "cuda"}
 ```
 
-## Что важно знать
+## Notes
 
-- Декодирование аудио идёт через `ffmpeg` (`C:\Windows\ffmpeg.exe`), а не через
-  PyAV: у `faster-whisper` с PyAV 19 несовместимость аргументов.
-- Ограничение Telegram: бот скачивает файлы до 20 МБ; голосовые почти всегда
-  далеко ниже.
-- Точность не идеальная: на первом живом тесте «голосовому» распозналось как
-  «кликовому». Если понадобится лучше — `initial_prompt` с терминами, модель
-  `large-v3` (медленнее) или языковая подсказка вместо автоопределения.
-- Сервис не хранит аудио: временный файл удаляется сразу после распознавания.
+- Audio is decoded with `ffmpeg` (`C:\Windows\ffmpeg.exe`), not PyAV: PyAV 19 is
+  incompatible with arguments used by `faster-whisper`.
+- The bot downloads files up to 20 MB from Telegram; voice messages are almost
+  always much smaller.
+- Transcription is not perfect. In the first live test, the Russian word for
+  “voice message” was recognized as a different word. If accuracy needs improving,
+  consider an `initial_prompt` with domain terms, the slower `large-v3` model, or
+  specifying a language instead of auto-detection.
+- The service does not retain audio; the temporary file is deleted immediately
+  after transcription.

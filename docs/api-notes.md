@@ -1,62 +1,65 @@
-# Факты об API OpenCode (v2.2.5), добытые опытом
+# OpenCode API notes (v2.2.5, verified behavior)
 
-Сервер: `http://127.0.0.1:28894` на Windows-сервере.
+Server: `http://127.0.0.1:28894` on the Windows server.
 
-## Авторизация
+## Authentication
 
-HTTP Basic, логин `opencode`, пароль — поле `password` в
+HTTP Basic, username `opencode`, password from the `password` field in
 `~/.config/opencode/service.json`.
 
 ```bash
-curl -u opencode:<пароль> http://127.0.0.1:28894/api/session?limit=1
+curl -u opencode:<password> http://127.0.0.1:28894/api/session?limit=1
 ```
 
-Без заголовка — `401 {"_tag":"UnauthorizedError"}`. `Authorization: Bearer`,
-`x-opencode-password` и `x-opencode-token` **не** работают.
+Without the header, the server returns `401 {"_tag":"UnauthorizedError"}`.
+`Authorization: Bearer`, `x-opencode-password`, and `x-opencode-token` do **not**
+work.
 
-## Эндпоинты, которыми пользуется бот
+## Endpoints used by the bot
 
-| Метод | Путь | Назначение |
+| Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/session?limit=N` | сессии всех проектов; в элементе есть `projectID`, `location.directory`, `model`, `time.updated` |
-| GET | `/api/session?limit=N&cursor=…` | следующие страницы сессий (`cursor.next`) |
-| POST | `/api/session` | создать: `{title, location:{directory}, model:{providerID,id}, permissions?}` |
-| DELETE | `/api/session/{id}` | удалить сессию |
-| POST | `/api/session/{id}/prompt` | отправить: `{text, files?, delivery?}`; отвечает сразу очередью |
-| GET | `/api/session/{id}/message?limit=N` | история сообщений |
-| GET | `/api/session/{id}/message?limit=N&cursor=…` | следующие страницы истории |
-| GET | `/api/session/active` | карта `{sessionID: {type:"running"}}` |
-| GET | `/api/session/{id}/permission` | **ожидающие подтверждения этой сессии** |
-| POST | `/api/session/{id}/permission/{requestID}/reply` | решение: `{decision}` |
-| GET | `/api/event` | SSE-поток событий |
+| GET | `/api/session?limit=N` | Sessions across projects; each item includes `projectID`, `location.directory`, `model`, and `time.updated` |
+| GET | `/api/session?limit=N&cursor=…` | Next session pages (`cursor.next`) |
+| POST | `/api/session` | Create: `{title, location:{directory}, model:{providerID,id}, permissions?}` |
+| DELETE | `/api/session/{id}` | Delete a session |
+| POST | `/api/session/{id}/prompt` | Send `{text, files?, delivery?}`; returns immediately with the queued item |
+| GET | `/api/session/{id}/message?limit=N` | Message history |
+| GET | `/api/session/{id}/message?limit=N&cursor=…` | Next history pages |
+| GET | `/api/session/active` | Map such as `{sessionID: {type:"running"}}` |
+| GET | `/api/session/{id}/permission` | **Pending approvals for this session** |
+| POST | `/api/session/{id}/permission/{requestID}/reply` | Submit a `{decision}` |
+| GET | `/api/event` | SSE event stream |
 
-## Вложения
+## Attachments
 
-В запросе `prompt` файл передаётся так:
+In a `prompt` request, a file is sent as:
 
 ```json
 { "name": "photo.jpg", "uri": "data:image/jpeg;base64,<…>", "source": { "type": "inline" } }
 ```
 
-Диски отправителя и получателя значения не имеют — содержимое внутри запроса.
-Проверено живьём: фото 5 МБ легло в сессию как изображение, модель его описала.
+Sender and receiver disks are irrelevant because the content is embedded in the
+request. A live test confirmed that a 5 MB photo was added to a session as an
+image and described by the model.
 
-## Ответ на подтверждение
+## Replying to an approval
 
 ```json
-{ "decision": "once" }     // или "always", или "reject"
+{ "decision": "once" }     // or "always" or "reject"
 ```
 
-Поле `reply` даёт **400**. Это стоило одного живого теста: юнит-тесты проверяли
-собственную договорённость, а не API.
+The `reply` field returns **400**. This was found in a live test: unit tests had
+validated the client's own assumption, not the API contract.
 
-## Ожидающие подтверждения
+## Pending approvals
 
-`GET /api/permission/request` возвращает `{"location":{"directory":…},"data":[]}` —
-пустой список, привязанный к каталогу процесса. Реальные запросы лежат только
-по сессии: `GET /api/session/{id}/permission`.
+`GET /api/permission/request` returns
+`{"location":{"directory":…},"data":[]}`—an empty list associated with the
+process working directory. Actual requests are session-specific:
+`GET /api/session/{id}/permission`.
 
-Пример запроса:
+Example request:
 
 ```json
 {
@@ -66,9 +69,9 @@ curl -u opencode:<пароль> http://127.0.0.1:28894/api/session?limit=1
 }
 ```
 
-## События потока (`GET /api/event`)
+## Event stream (`GET /api/event`)
 
-SSE: строки `data: {json}`, между ними `: heartbeat`. Формат события:
+SSE uses `data: {json}` lines separated by `: heartbeat` lines. Example:
 
 ```json
 { "id": "evt_…", "created": 1700000000000,
@@ -77,35 +80,37 @@ SSE: строки `data: {json}`, между ними `: heartbeat`. Форма�
   "data": { "sessionID": "ses_…", "assistantMessageID": "msg_…", "ordinal": 0, "delta": "Hello" } }
 ```
 
-Замеченные типы: `session.text.started|delta|ended` (в `ended` приходит и полный
-`text`), `session.step.started|streamed|ended`, `session.execution.started|succeeded`,
-`session.inbox.enqueued|delivered`, `session.reasoning.*`, `session.tool.*`,
-`shell.exited`, `server.connected`.
+Observed types include `session.text.started|delta|ended` (the `ended` event also
+contains the complete `text`), `session.step.started|streamed|ended`,
+`session.execution.started|succeeded`, `session.inbox.enqueued|delivered`,
+`session.reasoning.*`, `session.tool.*`, `shell.exited`, and `server.connected`.
 
-## Модель сессии
+## Session model
 
-`POST /api/session` с `model` применяет модель: созданная сессия отчитывается
-`opencode-go/gpt-6-luna`. В `session.update` поля модели нет — менять её этим
-методом нельзя.
+Creating a session with `POST /api/session` and `model` applies the model; the
+created session reports `opencode-go/gpt-6-luna`. `session.update` has no model
+field, so it cannot be used to change the model.
 
-## Права (ruleset)
+## Permissions (ruleset)
 
-Формат — массив правил:
+The format is an array of rules:
 
 ```json
 [{ "action": "*", "resource": "*", "effect": "allow" },
  { "action": "read", "resource": "*.env", "effect": "ask" }]
 ```
 
-Передаётся при создании сессии (`permissions`). `effect: "ask"` заставляет агента
-остановиться и запросить подтверждение — так проверялась карточка в Telegram.
+Pass it when creating a session (`permissions`). `effect: "ask"` pauses the agent
+and requests approval; this was used to test Telegram approval cards.
 
-## Мелочи
+## Miscellaneous
 
-- Промпт возвращает `Session.Inbox.User` — сообщение уже в очереди, ход ещё идёт.
-- Ответы списка сессий и истории сообщений содержат `{data, cursor}`. Для
-  полного прохода нужно повторять запрос с `cursor.next` до `null`; мост
-  использует это при восстановлении уведомлений после долгого отключения.
-- `opencode api GET /openapi.json` отдаёт полную схему (через CLI, с авторизацией);
-  обычный `curl` к `/openapi.json` возвращает 401.
-- `opencode api` — удобный способ дёргать любой эндпоинт: `opencode api GET /api/session`.
+- A prompt returns `Session.Inbox.User`: the message is queued, but the turn is
+  still running.
+- Session-list and message-history responses contain `{data, cursor}`. To fetch
+  everything, repeat the request with `cursor.next` until it is `null`. The bridge
+  does this when recovering notifications after a long disconnect.
+- `opencode api GET /openapi.json` returns the full schema through the
+  authenticated CLI; a normal `curl` request to `/openapi.json` returns 401.
+- `opencode api` is a convenient way to call any endpoint, for example
+  `opencode api GET /api/session`.

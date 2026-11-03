@@ -1,37 +1,38 @@
-# Голосовые сообщения: распознавание речи на Windows-сервере
+# Voice messages: transcription on the Windows server
 
-Дата: 2026-11-03. Статус: принято, реализуется.
+Date: 2026-11-03. Status: accepted and implemented.
 
-## Зачем
+## Goal
 
-Голосовое из Telegram сейчас получает вежливый отказ. Нужно, чтобы оно превращалось
-в текст и уходило в выбранную сессию как обычное сообщение с пометкой «голосовое».
+Instead of refusing Telegram voice messages, transcribe them and send the text to
+the selected session as a regular message with a voice marker.
 
-## Где считать
+## Where to run inference
 
-На Windows-сервере: CPU, ample memory, available GPU, ffmpeg уже есть.
-На Linux host всего 2 vCPU, и распознавание там заняло бы десятки секунд, мешая прокси
-и мониторингу.
+On the Windows server: CPU, ample memory, available GPU, with ffmpeg
+already installed. Linux host has only network services; transcription there would take tens
+of seconds and compete with the proxy and monitoring.
 
-## Как
+## Design
 
-- Локальный сервис `faster-whisper` (модель `large-v3-turbo`, CUDA, иначе CPU int8)
-  слушает `127.0.0.1:28895`, `POST /transcribe` с файлом и заголовком
-  `x-whisper-token`, плюс `GET /healthz`.
-- Доступ из контейнера: `netsh portproxy` 28895 → loopback, брандмауэр разрешает
-  только `192.0.2.1`. Порог тот же, что у API OpenCode.
-- Бот скачивает голосовое (ogg/opus) через Bot API, отправляет на распознавание,
-  текст кладёт в сессию с префиксом «голосовое:». Не распозналось — понятная
-  ошибка, а не тишина.
-- Токен сервиса — в файле рядом с сервисом (не в git), у бота — в `.env`.
+- A local `faster-whisper` service (model `large-v3-turbo`, CUDA or CPU int8
+  fallback) listens on `127.0.0.1:28895`. It provides `POST /transcribe` with a
+  file and `x-whisper-token` header, plus `GET /healthz`.
+- Container access uses `netsh portproxy` on port 28895 and a firewall rule that
+  allows only `192.0.2.1`, the same restriction as the OpenCode API.
+- The bot downloads the voice message (ogg/opus) through the Bot API, sends it for
+  transcription, and forwards the text to the session. If transcription fails,
+  it returns a clear error instead of staying silent.
+- The service token is stored in a local file, not Git; the bot token is in `.env`.
 
-## Что не делаем
+## Out of scope
 
-Диаризацию, таймкоды в ответе, языковую настройку вручную (язык определяется сам),
-хранение аудио на диске после распознавания.
+Speaker diarization, timestamps in the response, manual language selection
+(language is auto-detected), and retaining audio files after transcription.
 
-## Проверка
+## Acceptance checks
 
-1. `POST /transcribe` с ogg-файлом возвращает текст.
-2. Голосовое из Telegram доходит до сессии текстом.
-3. Сервис недоступен — бот отвечает ошибкой, сессия не ломается.
+1. `POST /transcribe` with an ogg file returns text.
+2. A Telegram voice message reaches the session as text.
+3. If the service is unavailable, the bot reports an error and leaves the session
+   unchanged.

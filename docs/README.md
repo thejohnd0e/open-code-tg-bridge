@@ -1,34 +1,36 @@
-# Telegram-мост к OpenCode — документация
+# OpenCode Telegram Bridge documentation
 
-Telegram-бот — второй интерфейс к OpenCode: с телефона можно выбрать любую
-сессию любого проекта, отправить туда текст, фото, документ или голосовое,
-получать итоговые уведомления по завершении любой сессии и подтверждать опасную
-команду кнопкой.
+The Telegram bot is a second interface to OpenCode. From a phone, the owner can
+select a session in any project, send text, photos, documents, or voice messages,
+receive a completion notification for any session, and approve tool requests.
 
-## С чего начать
+## Start here
 
-| Документ | О чём |
+| Document | Covers |
 |---|---|
-| [architecture.md](architecture.md) | как устроено: компоненты, потоки, порты, доступ |
-| [deploy.md](deploy.md) | развернуть с нуля: сервер, `.env`, проброс портов, сборка |
-| [operations.md](operations.md) | повседневная эксплуатация: логи, здоровье, обновление |
-| [troubleshooting.md](troubleshooting.md) | что уже ломалось и как это искать |
-| [voice-service.md](voice-service.md) | локальное распознавание речи (Whisper на GPU) |
-| [api-notes.md](api-notes.md) | факты об API OpenCode, добытые опытом |
-| [2026-11-03-telegram-bridge-design.md](2026-11-03-telegram-bridge-design.md) | дизайн: зачем, цели, ограничения |
-| [2026-11-03-voice-design.md](2026-11-03-voice-design.md) | дизайн голосовых |
-| [plans/2026-11-03-telegram-bridge.md](plans/2026-11-03-telegram-bridge.md) | план реализации |
+| [architecture.md](architecture.md) | Components, data flows, ports, and access control |
+| [deploy.md](deploy.md) | Initial setup, `.env`, port forwarding, and container build |
+| [operations.md](operations.md) | Health, logs, upgrades, and backups |
+| [troubleshooting.md](troubleshooting.md) | Known failure modes and how to investigate them |
+| [voice-service.md](voice-service.md) | Local GPU speech recognition with Whisper |
+| [api-notes.md](api-notes.md) | OpenCode API behavior verified in practice |
+| [2026-11-03-telegram-bridge-design.md](2026-11-03-telegram-bridge-design.md) | Original goals, constraints, and design |
+| [2026-11-03-voice-design.md](2026-11-03-voice-design.md) | Voice transcription design |
+| [plans/2026-11-03-telegram-bridge.md](plans/2026-11-03-telegram-bridge.md) | Historical implementation plan |
 
-## Коротко
+## At a glance
 
-- **Бот:** контейнер `tg-bridge` на Linux host (192.0.2.1), Node 22 + grammY, long polling.
-- **Мозг:** сервер OpenCode на Windows-сервере, `127.0.0.1:28894`, опубликован в LAN
-  через `netsh portproxy` на `192.0.2.1:28894`, брандмауэр пускает только `192.0.2.1`.
-- **Голос:** `faster-whisper` `large-v3-turbo` на NVIDIA GPU, `127.0.0.1:28895`,
-  опубликован так же на `192.0.2.1:28895`.
-- **Доступ:** только `OWNER_TELEGRAM_ID`; остальным — молчание и строка в логе.
-- **Состояние:** JSON на docker-томе `tg-state` (выбранная сессия, `update_id`, курсоры завершений по сессиям).
-- **Tests:** `npm test` (`node --test`), 91 tests.
+- **Bot:** `tg-bridge` container on Linux host (`192.0.2.1`), Node 22 + grammY,
+  long polling.
+- **OpenCode API:** Windows server on `127.0.0.1:28894`, exposed to the LAN via
+  `netsh portproxy` at `192.0.2.1:28894`; the firewall allows only
+  `192.0.2.1`.
+- **Voice:** `faster-whisper` `large-v3-turbo` on the NVIDIA GPU, listening on
+  `127.0.0.1:28895` and exposed at `192.0.2.1:28895` in the same way.
+- **Access:** Only `OWNER_TELEGRAM_ID`; others receive no response and are logged.
+- **State:** JSON on the `tg-state` Docker volume (selected session, `update_id`,
+  and per-session completion cursors).
+- **Tests:** `npm test` (`node --test`); 91 tests.
 
 ## Bot commands
 
@@ -41,11 +43,10 @@ Telegram-бот — второй интерфейс к OpenCode: с телефо
 ```
 
 After `/start` or `/help`, Telegram shows a persistent keyboard with **Sessions**,
-**New**, **Model**, **Status**, and **Help**. Slash command names stay unchanged.
+**New**, **Model**, **Status**, and **Help**. Slash command names are unchanged.
 
-Other text, photos, documents, and voice messages are sent to the selected session.
-OpenCode-authored replies, project names, and session titles are passed through
+Other text, photos, documents, and voice messages are sent to the selected
+session. OpenCode-authored replies, project names, and session titles pass through
 unchanged. After a successful run, the bot sends one final notification with the
 project and session names; progress messages are not forwarded. Long replies are
-split into parts of up to 4096 characters.
-
+split into parts of up to 4,096 characters.

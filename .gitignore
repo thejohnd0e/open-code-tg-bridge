@@ -1,4 +1,29 @@
+# Dependencies
 node_modules/
+
+# Secrets and local configuration
 .env
+.env.*
+!.env.example
+
+# Runtime state and logs
 state.json
-.superpowers/
+*.log
+npm-debug.log*
+
+# Python voice service
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local test/build output
+coverage/
+dist/
+
+# Local agent notes
+/AGENTS.md
+/CLAUDE.md
+/DECISIONS.md
+/STATUS.md
+/TODO.md

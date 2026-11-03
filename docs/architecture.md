@@ -1,96 +1,91 @@
-# Архитектура
+# Architecture
 
 ```
- телефон ──Telegram Bot API──┐
-                             │  long polling
-                    ┌────────▼─────────┐
-                    │ tg-bridge        │  контейнер на Linux host (192.0.2.1)
-                    │ Node 22 + grammY │
-                    └───┬─────────┬────┘
-        HTTP Basic      │         │  multipart + x-whisper-token
-   ┌────────────────────▼──┐   ┌──▼─────────────────────┐
-   │ OpenCode API          │   │ Whisper (faster-whisper)│
-   │ 192.0.2.1:28894   │   │ 192.0.2.1:28895     │
-   │ → Windows 127.0.0.1   │   │ → Windows 127.0.0.1     │
-   └───────────────────────┘   └─────────────────────────┘
+ phone ──Telegram Bot API──┐
+                          │  long polling
+                 ┌────────▼─────────┐
+                 │ tg-bridge        │  container on the Linux host (192.0.2.1)
+                 │ Node 22 + grammY │
+                 └───┬─────────┬────┘
+     HTTP Basic      │         │  multipart + x-whisper-token
+┌────────────────────▼──┐   ┌──▼─────────────────────┐
+│ OpenCode API          │   │ Whisper (faster-whisper)│
+│ 192.0.2.1:28894   │   │ 192.0.2.1:28895     │
+│ → Windows 127.0.0.1   │   │ → Windows 127.0.0.1     │
+└───────────────────────┘   └─────────────────────────┘
 ```
 
-Оба порта публикуются с Windows-сервера через `netsh portproxy`; правило
-брандмауэра разрешает подключение только с адреса `192.0.2.1`.
+Both ports are published from the Windows server through `netsh portproxy`; the
+firewall allows connections only from `192.0.2.1`.
 
-## Почему так
+## Why this design
 
-- **Сессии живут на Windows-сервере.** Он включён всегда, в него же ходят по RDP.
-  Бот лишь клиент к тому же API, что и TUI; поэтому он видит все проекты.
-- **Бот на Linux host, а не на Windows.** Просьба владельца: Docker, логи, автоперезапуск.
-  Цена — API приходится публиковать в локальную сеть (с фильтром по IP и паролем).
-- **`portproxy`, а не перенос сервера на LAN.** OpenCode продолжает слушать loopback,
-  поэтому TUI и RDP работают как раньше; наружу виден только проброшенный порт.
-  Обратный SSH-туннель рассматривался и отклонён: лишний процесс, который надо
-  сторожить после перезагрузок.
-- **Whisper на Windows.** На Linux host сетевые сервисы, там же прокси и мониторинг; NVIDIA GPU
-  распознаёт 6,6 с речи за ~1 с.
+- **Sessions live on the Windows server.** It is always on and is also accessed
+  over RDP. The bot is another client of the same API as the TUI, so it sees all
+  projects.
+- **The bot runs on Linux host, not Windows.** The owner requested Docker, logs, and
+  automatic restarts. The tradeoff is that the API must be exposed on the LAN,
+  protected by an IP filter and password.
+- **`portproxy` instead of moving the server onto the LAN.** OpenCode continues
+  listening on loopback, so TUI and RDP keep working as before; only the forwarded
+  port is exposed. A reverse SSH tunnel was considered and rejected because it
+  would add a process to supervise after reboots.
+- **Whisper runs on Windows.** Linux host has network services and also runs the proxy and
+  monitoring; the NVIDIA GPU transcribes 6.6 seconds of audio in about one second.
 
-## Компоненты репозитория
+## Repository components
 
-| Файл | Ответственность |
+| File | Responsibility |
 |---|---|
-| `src/index.js` | читает env, собирает зависимости, поднимает healthz |
-| `src/services.js` | запускает трекер завершений и бота независимо друг от друга |
-| `src/api.js` | HTTP-клиент OpenCode: Basic, эндпоинты, разбор SSE |
-| `src/completions.js` | следит за успешным завершением всех сессий, восстанавливает пропуски |
-| `src/completion-delivery.js` | формирует «✅ Всё сделано, готово» и режет длинный итог |
-| `src/permissions.js` | опрос подтверждений по активным сессиям, карточки |
-| `src/bot.js` | grammY: команды, вложения, голос, кнопки |
-| `src/router.js` | владелец, разбор команд, лимит файла |
-| `src/format.js` | нарезка длинных сообщений, списки, текст карточки |
-| `src/state.js` | состояние на диске (атомарная запись) |
-| `src/whisper.js` | клиент сервиса распознавания |
-| `src/retry.js` | повторный запуск бота, если Telegram недоступен |
+| `src/index.js` | Reads environment variables, wires dependencies, starts healthz |
+| `src/services.js` | Starts the completion tracker and bot independently |
+| `src/api.js` | OpenCode HTTP client: Basic auth, endpoints, SSE parsing |
+| `src/completions.js` | Tracks successful completions across sessions and recovers missed ones |
+| `src/completion-delivery.js` | Formats completion notifications and splits long messages |
+| `src/permissions.js` | Polls active sessions for permission requests and builds cards |
+| `src/bot.js` | grammY commands, attachments, voice, and buttons |
+| `src/router.js` | Owner checks, command parsing, and file-size limits |
+| `src/format.js` | Splits long messages; formats lists and cards |
+| `src/state.js` | On-disk state with atomic writes |
+| `src/whisper.js` | Client for the transcription service |
+| `src/retry.js` | Restarts the bot if Telegram is unavailable |
 
-## Потоки данных
+## Data flows
 
-**Сообщение из Telegram.** `message` → фильтр владельца → `/sessions|/status|/new|/help`
-либо `POST /api/session/{id}/prompt` с текстом и файлами (файл передаётся как
-`data:<mime>;base64,…`, `source: inline`). Ответ API возвращается сразу и содержит
-поставленный в очередь элемент inbox — бот не ждёт окончания хода.
+**Telegram message.** `message` → owner filter → `/sessions|/status|/new|/help`
+or `POST /api/session/{id}/prompt` with text and files (files are sent as
+`data:<mime>;base64,…`, `source: inline`). The API responds immediately with the
+queued inbox item; the bot does not wait for the turn to finish.
 
-The filter checks both the Telegram user ID and that the chat is private with the same chat ID.
-Matching user ID alone is not enough: owner messages in groups are ignored too.
-`/sessions` loads sessions with API cursors and shows 10 per page; inline buttons
-`‹ Previous` / `Next ›` provide access to every project.
+The filter checks both the Telegram user ID and that the chat is private with the
+same chat ID. Matching user ID alone is not enough: owner messages in groups are
+ignored too. `/sessions` loads sessions through API cursors and shows 10 per page;
+inline buttons `‹ Previous` / `Next ›` provide access to every project.
 
-**Завершение агента.** Бот держит глобальную SSE-подписку `GET /api/event` и
-слушает `session.execution.succeeded` для любой сессии. Промежуточные
-`session.text.*`, reasoning и вывод инструментов не пересылаются. По истории
-сессии выбирается последнее assistant-сообщение перед `idle/outcome=succeeded`;
-Telegram получает один итог:
+**Agent completion.** The bot maintains a global SSE subscription to
+`GET /api/event` and listens for `session.execution.succeeded` from every session.
+Intermediate `session.text.*`, reasoning, and tool output are not forwarded. From
+session history, it selects the last assistant message before
+`idle/outcome=succeeded` and sends one final notification to Telegram.
 
-```text
-✅ Всё сделано, готово
-Проект · Название сессии
+On first startup, OpenCode session metadata establishes a baseline for each
+session: old completions are not sent and histories are not bulk-loaded. Separate
+`time.updated` and completion IDs are stored per session. After a disconnect,
+history is read only for changed sessions; new `idle/succeeded` completions are
+delivered once and in order. Sessions and histories are read using API cursors.
 
-Финальный ответ агента
-```
+**Approvals.** Every 3 seconds, the bot requests `GET /api/session/active`, then
+`GET /api/session/{id}/permission` for each active session. Each new request
+becomes a card containing the action, resources, project, and session, with three
+buttons. A button carries a short numeric key mapped in memory; the decision is
+sent to `POST /api/session/{id}/permission/{requestID}/reply` with `{decision}`.
 
-При первом старте OpenCode session metadata даёт baseline по каждой сессии;
-старые завершения не рассылаются и истории не загружаются массово. Дальше
-сохраняются отдельные `time.updated` и completion ID каждой сессии; после
-обрыва история читается только для изменившихся сессий, новые `idle/succeeded`
-доставляются по порядку один раз. Сессии и истории читаются страницами через API cursors.
+**Voice.** `voice|audio` → download through the Bot API (≤ 20 MB) →
+`POST /transcribe` → send the transcribed text to the session.
 
-**Подтверждения.** Раз в 3 секунды бот спрашивает `GET /api/session/active`, затем
-для каждой активной сессии `GET /api/session/{id}/permission`. Новый запрос
-превращается в карточку: действие, ресурсы, проект и сессия, три кнопки. Кнопка
-несёт короткий числовой ключ (карта в памяти), решение уходит
-`POST /api/session/{id}/permission/{requestID}/reply` с телом `{decision}`.
+## State
 
-**Голос.** `voice|audio` → скачивание через Bot API (≤ 20 МБ) → `POST /transcribe`
-→ текст уходит в сессию с префиксом `голосовое:`.
-
-## Состояние
-
-`/data/state.json` на томе `tg-state`:
+`/data/state.json` on the `tg-state` volume:
 
 ```json
 {
@@ -107,11 +102,11 @@ Telegram получает один итог:
 }
 ```
 
-- `updateID` отсекает повторную обработку того же апдейта после рестарта.
-- `completionInitialized` отделяет первичную установку (не слать старую историю)
-  от последующих reconnect (дослать пропущенные завершения).
-- `completionCursors` хранит последний доставленный успешный ход каждой сессии.
-- `completionDeliveryParts` сохраняет прогресс длинного многочастного сообщения;
-  retry продолжает с неподтверждённой части. У Bot API нет idempotency key, поэтому
-  таймаут после принятия сообщения может повторить одну часть.
-- `ownerID` в файле не используется: владелец берётся из `OWNER_TELEGRAM_ID`.
+- `updateID` prevents processing the same update twice after a restart.
+- `completionInitialized` distinguishes the initial baseline (do not send old
+  history) from later reconnects (deliver missed completions).
+- `completionCursors` stores the last delivered successful turn for each session.
+- `completionDeliveryParts` stores progress through long multi-part messages; a
+  retry resumes at the next unconfirmed part. The Bot API has no idempotency key,
+  so a timeout after Telegram accepts a message can cause one part to be repeated.
+- `ownerID` in this file is unused; the owner comes from `OWNER_TELEGRAM_ID`.

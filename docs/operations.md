@@ -1,57 +1,54 @@
-# Эксплуатация
+# Operations
 
-## Здоровье
+## Health
 
 ```bash
 docker ps --filter name=tg-bridge            # Up (healthy)
 docker exec tg-bridge node -e "fetch('http://127.0.0.1:8080/healthz').then(r=>r.text()).then(console.log)"
 ```
 
-`healthz` отвечает `ok`, даже если Telegram или OpenCode недоступны: контейнер
-жив, а ошибки видны в логе. Так сделано намеренно — иначе плохой токен вызывал
-бы цикл перезапусков.
+`healthz` returns `ok` even if Telegram or OpenCode is unavailable: it reports
+that the container is alive, while errors appear in the logs. This is intentional;
+otherwise, an invalid token could cause a restart loop.
 
-## Логи
+## Logs
 
 ```bash
 docker logs --since 30m tg-bridge 2>&1 | tail -50
 docker logs -f tg-bridge
 ```
 
-Что искать:
-
-| Строка | Значение |
+| Log line | Meaning |
 |---|---|
-| `bot started` | запуск бота |
-| `unauthorized user_id=N` | писал чужой аккаунт (или владелец до привязки) |
-| `completion delivered …` | итог по завершённой сессии ушёл в Telegram |
-| `completion send failed for ses_…` | Telegram не принял итог; курсор не сдвинут, повтор будет при периодической sync или reconnect |
-| `completion history failed for ses_…` | не удалось прочитать историю этой сессии для восстановления |
-| `completion event failed for ses_…` | обработка события завершения завершилась ошибкой |
-| `completion tracker stopped: …` | трекер неожиданно остановился; контейнер остаётся жив, проверьте ошибку рядом |
-| `completion event stream error: …` | поток событий оборвался, будет переподключение |
-| `handler failed: …` | ошибка обработчика |
-| `transcribe failed: …` | не сработало распознавание |
+| `bot started` | The bot started |
+| `unauthorized user_id=N` | An unknown account sent a message, or the owner has not been configured |
+| `completion delivered …` | A completed-session summary was sent to Telegram |
+| `completion send failed for ses_…` | Telegram rejected a summary; its cursor was not advanced, so periodic sync or reconnect will retry |
+| `completion history failed for ses_…` | Could not read this session's history for recovery |
+| `completion event failed for ses_…` | Failed to process a completion event |
+| `completion tracker stopped: …` | The tracker stopped unexpectedly; the container remains alive, so check the adjacent error |
+| `completion event stream error: …` | The event stream disconnected and will reconnect |
+| `handler failed: …` | A handler failed |
+| `transcribe failed: …` | Transcription failed |
 
-Непосредственные промежуточные сообщения не пересылаются: успех фиксируется
-одной строкой `completion delivered` на каждую сессию/завершение. История
-повторно сверяется раз в 30 секунд; при сбое Telegram доставка повторяется без
-ожидания разрыва SSE.
+Intermediate messages are not forwarded. Each completion is recorded with one
+`completion delivered` line. History is reconciled every 30 seconds; if Telegram
+fails, delivery is retried without waiting for an SSE disconnect.
 
-## Обновление версии
+## Upgrade
 
 ```bash
-# локально: тесты
+# Run tests locally
 cd telegram-bridge && npm test
 
-# перенос и сборка
+# Package and build on the server
 tar -czf tgbridge.tgz package.json package-lock.json src Dockerfile compose.yaml .env.example
 scp tgbridge.tgz root@192.0.2.1:/root/
 ssh root@192.0.2.1 'tar -xzf /root/tgbridge.tgz -C /root/TgBridge && cd /root/TgBridge && docker compose build && docker compose up -d --no-build'
 ```
 
-`--force-recreate` нужен, если менялся `.env`: переменные читаются только при
-создании контейнера.
+Use `--force-recreate` if `.env` changed; environment variables are read only
+when the container is created.
 
 ## Keyboard and session list
 
@@ -61,30 +58,31 @@ open page N directly. The bot only handles the owner's private chat; owner
 commands in groups are ignored too. All bot-authored interface text is English;
 OpenCode-authored response content is passed through unchanged.
 
-## Перезапуск
+## Restart
 
 ```bash
-docker restart tg-bridge         # состояние и выбранная сессия сохраняются
+docker restart tg-bridge         # State and selected session are preserved
 ```
 
-После старта бот сверяется с историей сессии и досылает только пропущенное:
-ответ, пришедший во время перезапуска, доходит один раз.
+After startup, the bot reconciles session history and sends only missed
+completions. A response that finishes during a restart is delivered once after
+the bot returns.
 
-## Резервная копия состояния
+## Back up state
 
 ```bash
 docker exec tg-bridge cat /data/state.json > state-backup.json
 ```
 
-Восстановление — положить файл обратно в том и перезапустить контейнер.
-Ничего секретного в нём нет: только id сессий и курсор.
+To restore, put the file back in the volume and restart the container. It contains
+no secrets, only session IDs and cursors.
 
-## Секреты
+## Secrets
 
-| Что | Где |
+| Secret | Location |
 |---|---|
-| Токен бота | `/root/TgBridge/.env` (600) на Linux host |
-| Пароль API OpenCode | там же, и в `~/.config/opencode/service.json` на Windows |
-| Токен распознавания | там же, и в `C:/Example/Project` |
+| Bot token | `/root/TgBridge/.env` (permissions `600`) on Linux host |
+| OpenCode API password | Same file and `~/.config/opencode/service.json` on Windows |
+| Transcription token | Same file and `C:/Example/Project` |
 
-В git не попадают: `.env` в `.gitignore`.
+`.env` is excluded from Git by `.gitignore`.
