@@ -1,6 +1,6 @@
 import { Bot } from 'grammy'
 import { isOwner, parseCommand, checkFileSize } from './router.js'
-import { formatSessionList, sessionChoiceRows, splitMessage } from './format.js'
+import { formatSessionList, sessionChoiceRows, splitMessage, permissionCardText } from './format.js'
 
 const NO_SESSION = 'Сначала выберите сессию: /sessions'
 const SERVER_DOWN = 'Сервер OpenCode недоступен — попробуйте позже.'
@@ -27,7 +27,7 @@ function pickFile(message) {
   return null
 }
 
-export function createHandlers({ client, store, config, log = () => {}, files, transcribe, onSelect = () => {} }) {
+export function createHandlers({ client, store, config, log = () => {}, files, transcribe, permissionCards = new Map(), onSelect = () => {} }) {
   const selected = () => store.get().selectedSessionID
   const owner = () => config.ownerID ?? store.get().ownerID
 
@@ -35,6 +35,15 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
     if (!isOwner(ctx.from?.id, owner())) {
       log(`unauthorized user_id=${ctx.from?.id}`)
       return
+    }
+    const updateID = ctx.update?.update_id
+    if (updateID && store.get().updateID >= updateID) {
+      log(`skip duplicate update_id=${updateID}`)
+      return
+    }
+    if (updateID) {
+      store.set({ updateID })
+      store.flush().catch(() => {})
     }
     try {
       await action()
@@ -168,12 +177,16 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
         return ctx.reply(`Выбрана сессия ${parts[1]}`)
       }
       if (parts[0] === 'perm') {
-        const [sessionID, requestID, decision] =
-          parts.length === 4 ? [parts[1], parts[2], parts[3]] : [selected(), parts[1], parts[2]]
-        if (!sessionID || !requestID) return
-        await client.replyPermission({ sessionID, requestID, reply: decision })
+        const card = permissionCards.get(parts[1])
+        if (!card) {
+          await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }).catch(() => {})
+          return ctx.reply('Карточка устарела: этот запрос уже неактуален.')
+        }
+        const decision = parts[2]
+        permissionCards.delete(parts[1])
+        await client.replyPermission({ sessionID: card.sessionID, requestID: card.requestID, reply: decision })
         await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }).catch(() => {})
-        return ctx.reply(`Решение по ${requestID}: ${decision}`)
+        return ctx.reply(`Решение по ${card.requestID}: ${decision}`)
       }
     })
   }
@@ -200,12 +213,15 @@ function telegramFiles(bot, token) {
 
 export function createBot({ token, client, store, config, log = () => {}, mirror, pollMs = 3000, transcribe }) {
   const bot = new Bot(token)
+  const permissionCards = new Map()
+  let cardSeq = 0
   const handlers = createHandlers({
     client,
     store,
     config,
     log,
     transcribe,
+    permissionCards,
     files: telegramFiles(bot, token),
     onSelect: (id) => mirror?.watch?.(id),
   })
@@ -225,25 +241,27 @@ export function createBot({ token, client, store, config, log = () => {}, mirror
       log(`permission poll failed: ${error.message}`)
       return
     }
-    for (const request of pending ?? []) {
-      if (seen.has(request.id)) continue
+    const fresh = (pending ?? []).filter((request) => !seen.has(request.id))
+    if (!fresh.length) return
+    let byId = new Map()
+    try {
+      const sessions = await client.listSessions({ limit: 50 })
+      byId = new Map((sessions ?? []).map((session) => [session.id, session]))
+    } catch (error) {
+      log(`permission session lookup failed: ${error.message}`)
+    }
+    for (const request of fresh) {
       seen.add(request.id)
-      const text = [
-        `Подтверждение: ${request.action}`,
-        (request.resources ?? []).join('\n').slice(0, 600),
-        request.message ?? '',
-        `сессия: ${request.sessionID}`,
-      ]
-        .filter(Boolean)
-        .join('\n')
+      const key = String(++cardSeq)
+      permissionCards.set(key, { sessionID: request.sessionID, requestID: request.id })
       try {
-        await bot.api.sendMessage(ownerID, text, {
+        await bot.api.sendMessage(ownerID, permissionCardText(request, byId.get(request.sessionID)), {
           reply_markup: {
             inline_keyboard: [
               [
-                { text: 'Разрешить', callback_data: `perm:${request.sessionID}:${request.id}:once` },
-                { text: 'Всегда', callback_data: `perm:${request.sessionID}:${request.id}:always` },
-                { text: 'Запретить', callback_data: `perm:${request.sessionID}:${request.id}:reject` },
+                { text: 'Разрешить', callback_data: `perm:${key}:once` },
+                { text: 'Всегда', callback_data: `perm:${key}:always` },
+                { text: 'Запретить', callback_data: `perm:${key}:reject` },
               ],
             ],
           },

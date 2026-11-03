@@ -50,3 +50,17 @@ export function sessionChoiceRows(sessions, limit = 10) {
     { text: `${i + 1}. ${truncate(s.title || '(без названия)', 40)}`, callback_data: `sel:${s.id}` },
   ])
 }
+
+export function permissionCardText(request, session) {
+  const where = session
+    ? `${truncate(session.title || '(без названия)', 60)} · ${lastSegment(session.location?.directory)}`
+    : request.sessionID
+  return [
+    `Подтверждение: ${request.action}`,
+    (request.resources ?? []).join('\n').slice(0, 600),
+    request.message,
+    `сессия: ${where}`,
+  ]
+    .filter(Boolean)
+    .join('\n')
+}

@@ -21,16 +21,26 @@ export function createMirror({
   let controller = null
   let stopped = false
 
-  function deliver(messageID, text) {
+  async function deliver(messageID, text) {
     if (!text || !text.trim()) return
     const last = store.get().lastMirrored
+    let chunk = text
     if (last && last.sessionID === watched && last.messageID === messageID) {
       if (text.length <= last.textLength) return
-      text = text.slice(last.textLength)
+      chunk = text.slice(last.textLength)
     }
-    store.set({ lastMirrored: { sessionID: watched, messageID, textLength: last?.messageID === messageID ? last.textLength + text.length : text.length } })
+    const previous = last
+    // claim the chunk before sending so a second `text.ended` for the same
+    // message diffs against the right offset; roll back if sending fails
+    store.set({ lastMirrored: { sessionID: watched, messageID, textLength: text.length } })
+    try {
+      await onMessage(watched, chunk)
+    } catch (error) {
+      log(`mirror send failed: ${error.message}`)
+      store.set({ lastMirrored: previous })
+      return
+    }
     store.flush().catch(() => {})
-    Promise.resolve(onMessage(watched, text)).catch((error) => log(`mirror send failed: ${error.message}`))
   }
 
   function handleEvent(event) {
@@ -39,15 +49,17 @@ export function createMirror({
     const messageID = event.data.assistantMessageID
     switch (event.type) {
       case 'session.text.started':
-        if (messageID) buffers.set(messageID, '')
+        if (messageID && !buffers.has(messageID)) buffers.set(messageID, '')
         break
       case 'session.text.delta':
         if (messageID) buffers.set(messageID, (buffers.get(messageID) ?? '') + (event.data.delta ?? ''))
         break
       case 'session.text.ended': {
         if (!messageID) break
-        const text = buffers.get(messageID) || event.data.text || ''
-        buffers.delete(messageID)
+        const buffered = buffers.get(messageID) ?? ''
+        // the event may carry the whole message text; the buffer accumulates all
+        // text segments of the same message, so take whichever is longer
+        const text = (event.data.text?.length ?? 0) > buffered.length ? event.data.text : buffered
         log(`mirror deliver ${watched} ${messageID} ${text.length} chars`)
         deliver(messageID, text)
         break
@@ -86,8 +98,12 @@ export function createMirror({
   async function start() {
     stopped = false
     const hadState = Boolean(store.get().lastMirrored)
-    if (watched) await syncBaseline({ deliver: hadState })
+    let first = true
     while (!stopped) {
+      // reconcile with history before subscribing, so an answer that finished
+      // while we were asleep or disconnected is still delivered exactly once
+      await syncBaseline({ deliver: first ? hadState : true })
+      first = false
       controller = new AbortController()
       try {
         await client.eventStream({ signal: controller.signal, onEvent: handleEvent })
@@ -96,7 +112,6 @@ export function createMirror({
         log(`event stream error: ${error.message}`)
       }
       if (stopped) break
-      await syncBaseline({ deliver: true })
       await sleep(reconnectDelayMs)
     }
   }

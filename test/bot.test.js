@@ -27,10 +27,11 @@ function fakeClient(overrides = {}) {
   }
 }
 
-function fakeCtx({ userID = 1, text, photo, document, caption, callback } = {}) {
+function fakeCtx({ userID = 1, text, photo, document, caption, callback, updateID } = {}) {
   const replies = []
   return {
     replies,
+    update: updateID ? { update_id: updateID } : undefined,
     from: { id: userID },
     chat: { id: 555 },
     message: { text, photo, document, caption },
@@ -169,19 +170,57 @@ test('стикер и видео тоже не проваливаются в т�
   assert.equal(ctx.replies.length, 1)
 })
 
-test('кнопка reject шлёт replyPermission reject', async () => {
-  const client = fakeClient()
-  const handlers = createHandlers({ client, store: fakeStore({ ownerID: 1, selectedSessionID: 'ses_1' }), config, log: () => {}, files: {} })
-  const ctx = fakeCtx({ callback: 'perm:req_1:reject' })
-  await handlers.onCallback(ctx)
-  assert.deepEqual(client.calls.reply, [{ sessionID: 'ses_1', requestID: 'req_1', reply: 'reject' }])
-})
 
-test('/sessions отдаёт список и клавиатуру выбора', async () => {
-  const client = fakeClient()
+test('/sessions отдаёт список и клавиатуру выбора', async () => {  const client = fakeClient()
   const handlers = createHandlers({ client, store: fakeStore({ ownerID: 1 }), config, log: () => {}, files: {} })
   const ctx = fakeCtx({ text: '/sessions' })
   await handlers.onMessage(ctx)
   assert.match(ctx.replies[0].body, /Проверка/)
   assert.equal(ctx.replies[0].options.reply_markup.inline_keyboard[0][0].callback_data, 'sel:ses_1')
+})
+
+test('кнопка подтверждения берёт сессию и запрос из короткой карты', async () => {
+  const client = fakeClient()
+  const cards = new Map([['k1', { sessionID: 'ses_other', requestID: 'req_9' }]])
+  const handlers = createHandlers({
+    client,
+    store: fakeStore({ ownerID: 1, selectedSessionID: 'ses_1' }),
+    config,
+    log: () => {},
+    files: {},
+    permissionCards: cards,
+  })
+  const ctx = fakeCtx({ callback: 'perm:k1:once' })
+  await handlers.onCallback(ctx)
+  assert.deepEqual(client.calls.reply, [{ sessionID: 'ses_other', requestID: 'req_9', reply: 'once' }])
+})
+
+test('устаревшая карточка не роняет обработчик', async () => {
+  const client = fakeClient()
+  const handlers = createHandlers({
+    client,
+    store: fakeStore({ ownerID: 1, selectedSessionID: 'ses_1' }),
+    config,
+    log: () => {},
+    files: {},
+    permissionCards: new Map(),
+  })
+  const ctx = fakeCtx({ callback: 'perm:gone:reject' })
+  await handlers.onCallback(ctx)
+  assert.equal(client.calls.reply.length, 0)
+  assert.match(ctx.replies[0].body, /устарел/)
+})
+
+test('повторный update_id не выполняет команду дважды', async () => {
+  const client = fakeClient()
+  const handlers = createHandlers({
+    client,
+    store: fakeStore({ ownerID: 1, selectedSessionID: 'ses_1' }),
+    config,
+    log: () => {},
+    files: {},
+  })
+  await handlers.onMessage(fakeCtx({ text: 'привет', updateID: 77 }))
+  await handlers.onMessage(fakeCtx({ text: 'привет', updateID: 77 }))
+  assert.equal(client.calls.prompt.length, 1)
 })

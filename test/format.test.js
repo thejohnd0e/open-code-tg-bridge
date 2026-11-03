@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { splitMessage, formatSessionList, sessionChoiceRows } from '../src/format.js'
+import { splitMessage, formatSessionList, sessionChoiceRows, permissionCardText } from '../src/format.js'
 
 test('короткий текст не режется', () => {
   assert.deepEqual(splitMessage('привет'), ['привет'])
@@ -32,4 +32,20 @@ test('список сессий показывает выбранную и пр�
 test('кнопки выбора несут id сессии в callback_data', () => {
   const rows = sessionChoiceRows([{ id: 'ses_1', title: 'Проверка' }])
   assert.equal(rows[0][0].callback_data, 'sel:ses_1')
+})
+
+test('карточка подтверждения называет проект и сессию', () => {
+  const text = permissionCardText(
+    { action: 'bash', resources: ['rm -rf /tmp/x'], message: 'Требуется подтверждение' },
+    { title: 'Проверка связей', location: { directory: 'C:/Example/project-beta' } },
+  )
+  assert.match(text, /bash/)
+  assert.match(text, /rm -rf \/tmp\/x/)
+  assert.match(text, /Проверка связей/)
+  assert.match(text, /project-beta/)
+})
+
+test('без данных сессии карточка всё равно собирается', () => {
+  const text = permissionCardText({ action: 'edit', resources: [] }, undefined)
+  assert.match(text, /edit/)
 })

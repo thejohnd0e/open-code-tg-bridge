@@ -26,6 +26,20 @@ test('дельта собирается в один ответ по session.text
   assert.deepEqual(calls, ['Привет'])
 })
 
+test('две текстовые части одного сообщения не теряются', () => {
+  const calls = []
+  const mirror = createMirror({ client: {}, store: memoryStore({ selectedSessionID: 's' }), onMessage: (_, t) => calls.push(t) })
+  mirror.watch('s')
+  const base = { sessionID: 's', assistantMessageID: 'm1' }
+  mirror.handleEvent({ type: 'session.text.started', data: base })
+  mirror.handleEvent({ type: 'session.text.delta', data: { ...base, delta: 'Сначала прочитаю файл. ' } })
+  mirror.handleEvent({ type: 'session.text.ended', data: base })
+  mirror.handleEvent({ type: 'session.text.started', data: base })
+  mirror.handleEvent({ type: 'session.text.delta', data: { ...base, delta: 'Готово.' } })
+  mirror.handleEvent({ type: 'session.text.ended', data: base })
+  assert.deepEqual(calls, ['Сначала прочитаю файл. ', 'Готово.'].slice(0, 1).concat(['Готово.']))
+})
+
 test('чужая сессия не зеркалится', () => {
   const calls = []
   const mirror = createMirror({ client: {}, store: memoryStore({ selectedSessionID: 's' }), onMessage: (_, t) => calls.push(t) })
@@ -76,13 +90,16 @@ test('текст берётся из session.text.ended, если дельты �
   assert.deepEqual(calls, ['Готово'])
 })
 
-test('ошибка отправки логируется и не рвёт поток событий', async () => {
+test('ошибка отправки логируется и не помечает ответ доставленным', async () => {
   const logs = []
+  let attempts = 0
+  const store = memoryStore({ selectedSessionID: 's' })
   const mirror = createMirror({
     client: {},
-    store: memoryStore({ selectedSessionID: 's' }),
+    store,
     log: (line) => logs.push(line),
     onMessage: async () => {
+      attempts += 1
       throw new Error('403 Forbidden')
     },
   })
@@ -90,4 +107,28 @@ test('ошибка отправки логируется и не рвёт пот
   mirror.handleEvent({ type: 'session.text.ended', data: { sessionID: 's', assistantMessageID: 'm1', text: 'Привет' } })
   await new Promise((resolve) => setImmediate(resolve))
   assert.ok(logs.some((line) => /403 Forbidden/.test(line)))
+  assert.equal(store.get().lastMirrored, null)
+  mirror.handleEvent({ type: 'session.text.ended', data: { sessionID: 's', assistantMessageID: 'm1', text: 'Привет' } })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(attempts, 2)
+})
+
+test('перед подпиской на поток состояние сверяется с историей', async () => {
+  const order = []
+  const mirror = createMirror({
+    client: {
+      messages: async () => {
+        order.push('messages')
+        return []
+      },
+      eventStream: async () => {
+        order.push('eventStream')
+        mirror.stop()
+      },
+    },
+    store: memoryStore({ selectedSessionID: 's' }),
+    onMessage: () => {},
+  })
+  await mirror.start()
+  assert.deepEqual(order, ['messages', 'eventStream'])
 })
