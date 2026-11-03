@@ -1,5 +1,7 @@
 # OpenCode Telegram Bridge
 
+[![CI](https://github.com/thejohnd0e/open-code-tg-bridge/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/thejohnd0e/open-code-tg-bridge/actions/workflows/ci.yml)
+
 A private Telegram client for an OpenCode server. The authorized owner can select
 sessions across projects, send text and attachments, receive completion summaries,
 and respond to permission requests. Voice transcription is optional and uses a

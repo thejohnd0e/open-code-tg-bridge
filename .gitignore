@@ -20,10 +20,26 @@ venv/
 # Local test/build output
 coverage/
 dist/
+build/
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime state and process markers
+*.pid
+*.pid.lock
+*.sqlite
+*.sqlite3
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
 
 # Local agent notes
-/AGENTS.md
-/CLAUDE.md
-/DECISIONS.md
-/STATUS.md
-/TODO.md
+AGENTS.md
+CLAUDE.md
+STATUS.md
+DECISIONS.md
+TODO.md
