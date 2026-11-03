@@ -51,6 +51,17 @@ export function sessionChoiceRows(sessions, limit = 10) {
   ])
 }
 
+export function sessionTitle(now, timeZone = 'Europe/Moscow') {
+  const formatted = new Intl.DateTimeFormat('ru-RU', {
+    timeZone,
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(now)
+  return `Telegram ${formatted.replace(',', '')}`
+}
+
 export function permissionCardText(request, session) {
   const where = session
     ? `${truncate(session.title || '(без названия)', 60)} · ${lastSegment(session.location?.directory)}`

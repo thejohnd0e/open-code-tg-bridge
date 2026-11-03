@@ -1,6 +1,6 @@
 import { Bot } from 'grammy'
 import { isOwner, parseCommand, checkFileSize } from './router.js'
-import { formatSessionList, sessionChoiceRows, splitMessage } from './format.js'
+import { formatSessionList, sessionChoiceRows, splitMessage, sessionTitle } from './format.js'
 import { pollPermissionCards } from './permissions.js'
 
 const NO_SESSION = 'Сначала выберите сессию: /sessions'
@@ -28,7 +28,7 @@ function pickFile(message) {
   return null
 }
 
-export function createHandlers({ client, store, config, log = () => {}, files, transcribe, permissionCards = new Map(), onSelect = () => {} }) {
+export function createHandlers({ client, store, config, log = () => {}, files, transcribe, permissionCards = new Map(), onSelect = () => {}, now = () => new Date() }) {
   const selected = () => store.get().selectedSessionID
   const owner = () => config.ownerID ?? store.get().ownerID
 
@@ -79,13 +79,13 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
   async function onNew(ctx) {
     const session = await client.createSession({
       directory: config.lightDir,
-      title: 'Telegram',
+      title: sessionTitle(now(), config.timeZone),
       model: parseModel(config.lightModel),
     })
     store.set({ selectedSessionID: session.id, lastMirrored: null })
     await store.flush()
     onSelect(session.id)
-    await ctx.reply(`Создана лёгкая сессия ${session.id} в ${config.lightDir}`)
+    await ctx.reply(`Создана лёгкая сессия «${session.title ?? session.id}» в ${config.lightDir}`)
   }
 
   async function onHelp(ctx) {
@@ -275,4 +275,6 @@ export function createBot({ token, client, store, config, log = () => {}, mirror
 }
 
 export { splitMessage }
+
+
 
