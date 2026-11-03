@@ -1,28 +1,30 @@
 # Deployment
 
-Prerequisites: SSH access to Linux host (`192.0.2.1`), administrator access to the
-Windows server (`192.0.2.1`), and a bot created with @BotFather.
+Prerequisites: SSH access to the Linux host (`192.0.2.12`), administrator access
+to the Windows host (`192.0.2.221`), and a bot created with @BotFather. The
+`192.0.2.0/24` addresses in this guide are reserved documentation examples;
+replace them with the addresses in your own environment.
 
 ## 1. Expose the OpenCode API on the LAN
 
 Run as administrator on the Windows server:
 
 ```powershell
-netsh interface portproxy add v4tov4 listenaddress=192.0.2.1 listenport=28894 connectaddress=127.0.0.1 connectport=28894
-New-NetFirewallRule -DisplayName "OpenCode API for the Linux host" -Direction Inbound -Protocol TCP -LocalPort 28894 -RemoteAddress 192.0.2.1 -Action Allow
+netsh interface portproxy add v4tov4 listenaddress=192.0.2.221 listenport=28894 connectaddress=127.0.0.1 connectport=28894
+New-NetFirewallRule -DisplayName "OpenCode API for Linux host" -Direction Inbound -Protocol TCP -LocalPort 28894 -RemoteAddress 192.0.2.12 -Action Allow
 ```
 
-Check from Linux host (password is the `password` field in
+Check from the Linux host (password is the `password` field in
 `~/.config/opencode/service.json`):
 
 ```bash
-curl -s -o /dev/null -w '%{http_code}\n' -u 'opencode:<password>' 'http://192.0.2.1:28894/api/session?limit=1'
+curl -s -o /dev/null -w '%{http_code}\n' -u 'opencode:<password>' 'http://192.0.2.221:28894/api/session?limit=1'
 ```
 
 Expected: `200`. If the result is `000`, `iphlpsvc` may not be running or the
 address in the rule may be wrong.
 
-## 2. Project directory and `.env` on Linux host
+## 2. Project directory and `.env` on the Linux host
 
 ```bash
 mkdir -p /root/TgBridge
@@ -33,12 +35,12 @@ Create `/root/TgBridge/.env` with permissions `600`; it must not be committed:
 
 ```
 TELEGRAM_BOT_TOKEN=<BotFather token>
-OPENCODE_URL=http://192.0.2.1:28894
+OPENCODE_URL=http://opencode.example.invalid:28894
 OPENCODE_TOKEN=<password from service.json>
 OWNER_TELEGRAM_ID=
-LIGHT_DIR=C:/Example/Project
+LIGHT_DIR=C:/path/to/your/project
 LIGHT_MODEL=opencode-go/gpt-6-luna
-WHISPER_URL=http://192.0.2.1:28895
+WHISPER_URL=http://whisper.example.invalid:28895
 WHISPER_TOKEN=<transcription service token>
 ```
 
@@ -90,7 +92,7 @@ error for voice messages; other features continue to work.
 
 ## Easy-to-miss dependencies
 
-- `192.0.2.1` must remain **static** because `portproxy` binds to that address.
+- The Windows host address must remain **static** because `portproxy` binds to it.
   If it changes, the bot loses access to the API and transcription service.
-- The firewall rule allows one source address. If Linux host changes IP, update both
+- The firewall rule allows one source address. If the Linux host changes IP, update both
   the rule and its `-RemoteAddress` value.

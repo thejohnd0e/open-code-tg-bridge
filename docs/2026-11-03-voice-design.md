@@ -9,9 +9,8 @@ the selected session as a regular message with a voice marker.
 
 ## Where to run inference
 
-On the Windows server: CPU, ample memory, available GPU, with ffmpeg
-already installed. Linux host has only network services; transcription there would take tens
-of seconds and compete with the proxy and monitoring.
+On a Windows host with an available NVIDIA GPU and ffmpeg. The Linux host also
+handles network services, so keeping inference separate avoids resource contention.
 
 ## Design
 
@@ -19,7 +18,8 @@ of seconds and compete with the proxy and monitoring.
   fallback) listens on `127.0.0.1:28895`. It provides `POST /transcribe` with a
   file and `x-whisper-token` header, plus `GET /healthz`.
 - Container access uses `netsh portproxy` on port 28895 and a firewall rule that
-  allows only `192.0.2.1`, the same restriction as the OpenCode API.
+  allows only the configured Linux host. Any `192.0.2.0/24` address in related
+  examples is reserved for documentation and must be replaced for deployment.
 - The bot downloads the voice message (ogg/opus) through the Bot API, sends it for
   transcription, and forwards the text to the session. If transcription fails,
   it returns a clear error instead of staying silent.

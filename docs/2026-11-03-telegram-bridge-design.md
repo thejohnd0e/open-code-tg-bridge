@@ -39,7 +39,7 @@ is another client for the same server used by TUI and RDP, not a separate
   - `GET /api/session/{id}/permission` and
     `POST /api/session/{id}/permission/{requestID}/reply` support the approval
     decisions `once | always | reject`.
-- `api.telegram.org` is reachable from Windows (302) and from Linux host (302 in
+- `api.telegram.org` is reachable from Windows (302) and from the Linux host (302 in
   0.55 seconds); no proxy is required in this environment.
 - The Bot API allows the bot to download files up to 20 MB; base64 adds about 33%.
 - Lower-cost models that accept images include `gpt-6-luna` (0.10 / 0.50 USD per
@@ -84,11 +84,11 @@ requiring explicit approval.
 
 ## Architecture
 
-- The `tg-bridge` container runs Node 22 + grammY on Linux host (`192.0.2.1`), with
+- The `tg-bridge` container runs Node 22 + grammY on the Linux host (`192.0.2.12`), with
   Docker Compose under `/root/TgBridge/` and `restart: unless-stopped`.
 - The Windows OpenCode server listens on the LAN through
   `opencode serve --hostname <lan-ip> --port 28894 --service`; the firewall allows
-  only `192.0.2.1`, and HTTP Basic authentication is required
+  only `192.0.2.12`, and HTTP Basic authentication is required
   (`opencode:<password from service.json>`). A reverse SSH tunnel was considered
   and rejected because it adds a process that must be supervised after reboots.
 - State (owner, selected session, `update_id`, and SSE cursor) is JSON on a Docker
@@ -98,9 +98,9 @@ requiring explicit approval.
 
 ## Decisions
 
-- The bot runs on Linux host, not Windows, at the owner's request: Docker, logs, and
+- The bot runs on the Linux host, not Windows, at the owner's request: Docker, logs, and
   automatic restarts. The tradeoff is LAN access to the API, restricted by IP.
-- Lightweight sessions use `gpt-6-luna` and `C:/Example/Project`, an empty
+- Lightweight sessions use `gpt-6-luna` and a configurable empty
   directory outside any working project.
 - The owner is configured in `.env`. Until the ID matches, the bot stays silent
   and logs the ID so the owner can identify it.
@@ -131,5 +131,5 @@ handling of photo albums and captions were left to implementation.
    also arrive with the project name.
 6. Restarting the container preserves the selected session; a response completed
    during downtime arrives once after startup.
-7. `/new` creates a session at `C:/Example/Project` with `gpt-6-luna`, and a
+7. `/new` creates a session in the configured lightweight-session directory with `gpt-6-luna`, and a
    photo sent to it is stored in that directory.

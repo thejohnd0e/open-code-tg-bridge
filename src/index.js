@@ -1,6 +1,7 @@
 import { createServer } from 'node:http'
 import { createStore } from './state.js'
 import { createClient } from './api.js'
+import { buildConfig } from './config.js'
 import { createCompletionTracker } from './completions.js'
 import { createCompletionDelivery } from './completion-delivery.js'
 import { createBot } from './bot.js'
@@ -26,11 +27,7 @@ const store = createStore(env.STATE_FILE ?? './state.json', {
   completionInitialized: false,
 })
 
-const config = {
-  ownerID: env.OWNER_TELEGRAM_ID ? Number(env.OWNER_TELEGRAM_ID) : null,
-  lightDir: env.LIGHT_DIR ?? 'C:/Example/Project',
-  lightModel: env.LIGHT_MODEL ?? 'opencode-go/gpt-6-luna',
-}
+const config = buildConfig(env)
 
 const client = createClient({ url: env.OPENCODE_URL, password: env.OPENCODE_TOKEN })
 

@@ -17,7 +17,7 @@ docker logs --since 10m tg-bridge 2>&1 | grep -E 'completion|event stream'
 
 Look for `completion delivered …`. If you see `completion history failed` or
 `completion event stream error`, check OpenCode API connectivity:
-`curl -u opencode:<password> http://192.0.2.1:28894/api/session?limit=1`.
+`curl -u opencode:<password> http://192.0.2.221:28894/api/session?limit=1`.
 
 ## Voice message is ignored without a response
 
@@ -65,7 +65,7 @@ queries each session. Button keys are short numbers mapped in memory.
 **Check without Telegram:**
 
 ```bash
-ssh root@192.0.2.1 'docker exec tg-bridge node --input-type=module -e "
+ssh root@192.0.2.12 'docker exec tg-bridge node --input-type=module -e "
 import { pollPermissionCards } from "/app/src/permissions.js"
 import { createClient } from "/app/src/api.js"
 const c = createClient({ url: process.env.OPENCODE_URL, password: process.env.OPENCODE_TOKEN })
@@ -102,7 +102,7 @@ still cause one part to be repeated.
 
 ## The bot stops responding after the Windows server IP changes
 
-**Cause:** `portproxy` listens on the specific address `192.0.2.1`.
+**Cause:** `portproxy` listens on the specific address `192.0.2.221`.
 
 **Fix:** Restore that address or update the rule:
 

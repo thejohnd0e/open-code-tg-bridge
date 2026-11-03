@@ -4,34 +4,37 @@
  phone ──Telegram Bot API──┐
                           │  long polling
                  ┌────────▼─────────┐
-                 │ tg-bridge        │  container on the Linux host (192.0.2.1)
+                 │ tg-bridge        │  container on Linux host (192.0.2.12)
                  │ Node 22 + grammY │
                  └───┬─────────┬────┘
      HTTP Basic      │         │  multipart + x-whisper-token
 ┌────────────────────▼──┐   ┌──▼─────────────────────┐
 │ OpenCode API          │   │ Whisper (faster-whisper)│
-│ 192.0.2.1:28894   │   │ 192.0.2.1:28895     │
+│ 192.0.2.221:28894   │   │ 192.0.2.221:28895     │
 │ → Windows 127.0.0.1   │   │ → Windows 127.0.0.1     │
 └───────────────────────┘   └─────────────────────────┘
 ```
 
 Both ports are published from the Windows server through `netsh portproxy`; the
-firewall allows connections only from `192.0.2.1`.
+firewall allows connections only from `192.0.2.12`.
+
+The `192.0.2.0/24` addresses shown here are reserved documentation examples, not
+deployment addresses.
 
 ## Why this design
 
 - **Sessions live on the Windows server.** It is always on and is also accessed
   over RDP. The bot is another client of the same API as the TUI, so it sees all
   projects.
-- **The bot runs on Linux host, not Windows.** The owner requested Docker, logs, and
+- **The bot runs on the Linux host, not Windows.** Docker, logs, and
   automatic restarts. The tradeoff is that the API must be exposed on the LAN,
   protected by an IP filter and password.
 - **`portproxy` instead of moving the server onto the LAN.** OpenCode continues
   listening on loopback, so TUI and RDP keep working as before; only the forwarded
   port is exposed. A reverse SSH tunnel was considered and rejected because it
   would add a process to supervise after reboots.
-- **Whisper runs on Windows.** Linux host has network services and also runs the proxy and
-  monitoring; the NVIDIA GPU transcribes 6.6 seconds of audio in about one second.
+- **Whisper runs on Windows.** The Linux host also runs network services, while
+  the Windows host provides GPU acceleration for transcription.
 
 ## Repository components
 
@@ -91,13 +94,13 @@ sent to `POST /api/session/{id}/permission/{requestID}/reply` with `{decision}`.
 {
   "ownerID": null,
   "selectedSessionID": "ses_…",
-  "updateID": 1,
+    "updateID": 1,
   "completionInitialized": true,
   "completionCursors": {
-    "ses_…": { "completionID": "msg_idle_…", "eventID": "evt_…", "updatedAt": 0 }
+      "ses_example": { "completionID": "msg_idle_example", "eventID": "evt_example", "updatedAt": 0 }
   },
   "completionDeliveryParts": {
-    "ses_…": { "completionID": "msg_idle_…", "nextPart": 1 }
+      "ses_example": { "completionID": "msg_idle_example", "nextPart": 1 }
   }
 }
 ```

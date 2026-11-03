@@ -37,14 +37,17 @@ fails, delivery is retried without waiting for an SSE disconnect.
 
 ## Upgrade
 
+The `192.0.2.0/24` address in command examples is reserved for documentation;
+replace it with the address of your Linux host.
+
 ```bash
 # Run tests locally
 cd telegram-bridge && npm test
 
 # Package and build on the server
 tar -czf tgbridge.tgz package.json package-lock.json src Dockerfile compose.yaml .env.example
-scp tgbridge.tgz root@192.0.2.1:/root/
-ssh root@192.0.2.1 'tar -xzf /root/tgbridge.tgz -C /root/TgBridge && cd /root/TgBridge && docker compose build && docker compose up -d --no-build'
+scp tgbridge.tgz root@192.0.2.12:/root/
+ssh root@192.0.2.12 'tar -xzf /root/tgbridge.tgz -C /root/TgBridge && cd /root/TgBridge && docker compose build && docker compose up -d --no-build'
 ```
 
 Use `--force-recreate` if `.env` changed; environment variables are read only
@@ -81,8 +84,8 @@ no secrets, only session IDs and cursors.
 
 | Secret | Location |
 |---|---|
-| Bot token | `/root/TgBridge/.env` (permissions `600`) on Linux host |
+| Bot token | `/root/TgBridge/.env` (permissions `600`) on the Linux host |
 | OpenCode API password | Same file and `~/.config/opencode/service.json` on Windows |
-| Transcription token | Same file and `C:/Example/Project` |
+| Transcription token | Same file and `voice-service/token.txt` on the Windows host |
 
 `.env` is excluded from Git by `.gitignore`.

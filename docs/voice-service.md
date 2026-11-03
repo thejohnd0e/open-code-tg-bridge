@@ -1,14 +1,12 @@
 # Local voice transcription
 
-This service transcribes Telegram voice messages. It runs on the Windows server
-and uses the GPU for inference.
+This service transcribes Telegram voice messages. It runs on a Windows host and
+uses GPU acceleration when available.
 
-## Why Windows instead of Linux host
+## Why run transcription separately
 
-The Windows server has an CPU, ample memory, and an available GPU. Linux host has
-network services and also runs the proxy and monitoring. In a measured test, 6.6 seconds
-of audio took about one second to transcribe on the GPU; CPU inference would take
-several times longer.
+Keeping transcription on a separate Windows host avoids competing with other
+network services and allows the service to use an available GPU.
 
 ## Components
 
@@ -16,8 +14,8 @@ several times longer.
 |---|---|
 | `voice-service/server.py` | FastAPI endpoints: `POST /transcribe`, `GET /healthz` |
 | `voice-service/start.cmd` | Starts uvicorn with CUDA library paths |
-| `C:/Example/Project` | Access token (not in Git) |
-| `C:/Example/Project` | Service log |
+| `voice-service/token.txt` | Access token (not in Git) |
+| `voice-service/service.log` | Service log |
 
 The model is `large-v3-turbo` (CTranslate2), device `cuda`, `compute_type=float16`,
 with `beam_size=5` and VAD enabled. If CUDA is unavailable, set
@@ -26,7 +24,8 @@ with `beam_size=5` and VAD enabled. If CUDA is unavailable, set
 ## Install
 
 ```powershell
-cd C:/Example/Project
+$voiceDir = Join-Path $env:USERPROFILE 'OpenCode\whisper'
+Set-Location $voiceDir
 python -m venv .venv
 .\.venv\Scripts\pip install faster-whisper fastapi "uvicorn[standard]" python-multipart nvidia-cublas-cu12 nvidia-cudnn-cu12 "av>=14"
 # Store a 32-character hexadecimal token in token.txt
@@ -38,7 +37,9 @@ python -m venv .venv
 ## Start automatically
 
 ```powershell
-schtasks /Create /TN "Whisper local" /TR "C:/Example/Project" /SC ONSTART /RU SYSTEM /RL HIGHEST /F
+$startScript = Join-Path $env:USERPROFILE 'OpenCode\whisper\start.cmd'
+$taskAction = "`"$startScript`""
+schtasks /Create /TN "Whisper local" /TR $taskAction /SC ONSTART /RU SYSTEM /RL HIGHEST /F
 ```
 
 The task runs as `SYSTEM`, so it survives RDP sign-out. A real server reboot has
@@ -46,13 +47,16 @@ not yet been tested (see `TODO.md`).
 
 ## Access from the container
 
+The `192.0.2.0/24` addresses below are reserved documentation examples; replace
+them with the Windows host and Linux host addresses in your environment.
+
 ```powershell
-netsh interface portproxy add v4tov4 listenaddress=192.0.2.1 listenport=28895 connectaddress=127.0.0.1 connectport=28895
-New-NetFirewallRule -DisplayName "Whisper for the Linux host" -Direction Inbound -Protocol TCP -LocalPort 28895 -RemoteAddress 192.0.2.1 -Action Allow
+netsh interface portproxy add v4tov4 listenaddress=192.0.2.221 listenport=28895 connectaddress=127.0.0.1 connectport=28895
+New-NetFirewallRule -DisplayName "Whisper for Linux host" -Direction Inbound -Protocol TCP -LocalPort 28895 -RemoteAddress 192.0.2.12 -Action Allow
 ```
 
-Check from Linux host:
-`curl -s -o /dev/null -w '%{http_code}\n' http://192.0.2.1:28895/healthz`
+Check from the Linux host:
+`curl -s -o /dev/null -w '%{http_code}\n' http://192.0.2.221:28895/healthz`
 should return `200`.
 
 ## API

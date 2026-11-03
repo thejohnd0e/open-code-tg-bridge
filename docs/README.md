@@ -20,24 +20,27 @@ receive a completion notification for any session, and approve tool requests.
 
 ## At a glance
 
-- **Bot:** `tg-bridge` container on Linux host (`192.0.2.1`), Node 22 + grammY,
+- **Bot:** `tg-bridge` container on a Linux host (`192.0.2.12`), Node 22 + grammY,
   long polling.
 - **OpenCode API:** Windows server on `127.0.0.1:28894`, exposed to the LAN via
-  `netsh portproxy` at `192.0.2.1:28894`; the firewall allows only
-  `192.0.2.1`.
-- **Voice:** `faster-whisper` `large-v3-turbo` on the NVIDIA GPU, listening on
-  `127.0.0.1:28895` and exposed at `192.0.2.1:28895` in the same way.
+  `netsh portproxy` at `192.0.2.221:28894`; the firewall allows only
+  `192.0.2.12`.
+- **Voice:** `faster-whisper` `large-v3-turbo` with GPU acceleration, listening on
+  `127.0.0.1:28895` and exposed at `192.0.2.221:28895` in the same way.
 - **Access:** Only `OWNER_TELEGRAM_ID`; others receive no response and are logged.
 - **State:** JSON on the `tg-state` Docker volume (selected session, `update_id`,
   and per-session completion cursors).
-- **Tests:** `npm test` (`node --test`); 91 tests.
+- **Tests:** `npm test` (`node --test`); 93 tests.
+
+Addresses in the `192.0.2.0/24` range above are reserved documentation examples;
+replace them with values from your own environment.
 
 ## Bot commands
 
 ```
 /sessions — choose a session from any project (10 per page)
 /status   — show the current session
-/new      — create a lightweight session in C:/Example/Project on gpt-6-luna
+/new      — create a lightweight session in the configured directory
 /model    — change the selected session's model
 /help     — show help
 ```
