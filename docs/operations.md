@@ -22,7 +22,7 @@ docker logs -f tg-bridge
 
 | Строка | Значение |
 |---|---|
-| `bot @ExampleBot started` | запуск бота |
+| `bot started` | запуск бота |
 | `unauthorized user_id=N` | писал чужой аккаунт (или владелец до привязки) |
 | `completion delivered …` | итог по завершённой сессии ушёл в Telegram |
 | `completion send failed for ses_…` | Telegram не принял итог; курсор не сдвинут, повтор будет при периодической sync или reconnect |

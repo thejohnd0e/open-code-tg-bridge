@@ -52,7 +52,7 @@ docker compose up -d --no-build
 docker logs -f tg-bridge
 ```
 
-В логе должно появиться `bot @ExampleBot started` и `healthz on 8080`.
+В логе должно появиться `bot started` и `healthz on 8080`.
 
 ## 4. Привязка владельца
 

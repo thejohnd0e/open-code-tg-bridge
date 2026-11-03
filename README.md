@@ -1,25 +1,30 @@
-# tg-bridge — Telegram-интерфейс к OpenCode
+# OpenCode Telegram Bridge
 
-Бот `@ExampleBot`: с телефона выбирает любую сессию любого проекта OpenCode,
-передаёт туда текст, фото, документы и голосовые, присылает итог в Telegram при
-успешном завершении любой сессии и показывает карточки подтверждений.
+A Telegram client for OpenCode. It lets an authorized owner select sessions from
+any project, send text and attachments, receive completion summaries, and respond
+to permission requests.
+
+## Requirements
+
+- Node.js 22 or later
+- Access to an OpenCode server API
+- A Telegram bot token and the owner's Telegram user ID
+
+## Install and test
 
 ```bash
 npm install
-npm test        # node --test
+npm test
 ```
 
-Документация — в каталоге [`docs/`](docs/README.md):
+## Documentation
 
-- [архитектура](docs/architecture.md)
-- [развёртывание](docs/deploy.md)
-- [эксплуатация](docs/operations.md)
-- [разбор поломок](docs/troubleshooting.md)
-- [распознавание речи](docs/voice-service.md)
-- [заметки об API OpenCode](docs/api-notes.md)
+- [Architecture](docs/architecture.md)
+- [Deployment](docs/deploy.md)
+- [Operations](docs/operations.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Voice service](docs/voice-service.md)
+- [OpenCode API notes](docs/api-notes.md)
 
-Дизайн и план: [docs/2026-11-03-telegram-bridge-design.md](docs/2026-11-03-telegram-bridge-design.md),
-[docs/plans/2026-11-03-telegram-bridge.md](docs/plans/2026-11-03-telegram-bridge.md).
-
-Сервис распознавания речи лежит в [`voice-service/`](voice-service/) — его
-разворачивают на Windows-сервере рядом с OpenCode, отдельно от контейнера.
+The voice recognition service is in [`voice-service/`](voice-service/) and runs
+separately from the Telegram bridge container.
