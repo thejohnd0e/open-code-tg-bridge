@@ -62,6 +62,28 @@ export function sessionTitle(now, timeZone = 'Europe/Moscow') {
   return `Telegram ${formatted.replace(',', '')}`
 }
 
+export function recentModels(sessions, limit = 8) {
+  const seen = new Set()
+  const out = []
+  for (const session of sessions) {
+    const model = session?.model
+    if (!model?.id || !model?.providerID) continue
+    const key = `${model.providerID}/${model.id}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({ providerID: model.providerID, id: model.id })
+    if (out.length >= limit) break
+  }
+  return out
+}
+
+export function modelRows(models, current) {
+  return models.map((model, index) => {
+    const isCurrent = model.providerID === current?.providerID && model.id === current?.id
+    return [{ text: `${isCurrent ? '✓ ' : ''}${model.providerID}/${model.id}`, callback_data: `mdl:${index}` }]
+  })
+}
+
 export function permissionCardText(request, session) {
   const where = session
     ? `${truncate(session.title || '(без названия)', 60)} · ${lastSegment(session.location?.directory)}`

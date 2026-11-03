@@ -54,6 +54,8 @@ export function createClient({ url, password, fetchImpl = fetch, timeoutMs = DEF
 
     pendingPermissions: () => call('GET', '/api/permission/request'),
 
+    switchModel: ({ sessionID, model }) => call('POST', `/api/session/${sessionID}/model`, { model }),
+
     activeSessions: async () => {
       const map = await call('GET', '/api/session/active')
       return Object.keys(map ?? {})

@@ -1,6 +1,6 @@
 export const MAX_FILE_BYTES = 20 * 1024 * 1024
 
-const COMMANDS = new Set(['start', 'sessions', 'status', 'new', 'help'])
+const COMMANDS = new Set(['start', 'sessions', 'status', 'new', 'help', 'model'])
 
 export function isOwner(userID, ownerID) {
   if (ownerID === null || ownerID === undefined || ownerID === '') return false
@@ -27,3 +27,4 @@ export function checkFileSize(size) {
   }
   return { ok: true }
 }
+

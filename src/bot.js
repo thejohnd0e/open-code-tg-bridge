@@ -1,6 +1,6 @@
 import { Bot } from 'grammy'
 import { isOwner, parseCommand, checkFileSize } from './router.js'
-import { formatSessionList, sessionChoiceRows, splitMessage, sessionTitle } from './format.js'
+import { formatSessionList, sessionChoiceRows, splitMessage, sessionTitle, recentModels, modelRows } from './format.js'
 import { pollPermissionCards } from './permissions.js'
 
 const NO_SESSION = 'Сначала выберите сессию: /sessions'
@@ -31,6 +31,7 @@ function pickFile(message) {
 export function createHandlers({ client, store, config, log = () => {}, files, transcribe, permissionCards = new Map(), onSelect = () => {}, now = () => new Date() }) {
   const selected = () => store.get().selectedSessionID
   const owner = () => config.ownerID ?? store.get().ownerID
+  let modelChoices = []
 
   async function guarded(ctx, action) {
     if (!isOwner(ctx.from?.id, owner())) {
@@ -94,6 +95,7 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
         '/sessions — выбрать сессию любого проекта',
         '/status — что выбрано сейчас',
         '/new — лёгкая сессия для быстрых вопросов',
+        '/model — сменить модель выбранной сессии',
         '/help — эта справка',
         '',
         'Текст, фото, документ или голосовое — уйдёт в выбранную сессию.',
@@ -117,6 +119,8 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
           return onStatus(ctx)
         case 'new':
           return onNew(ctx)
+        case 'model':
+          return onModel(ctx)
         case 'help':
           return onHelp(ctx)
         default:
@@ -162,6 +166,20 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
     await ctx.reply(`↗ «${text.slice(0, 300)}»`)
   }
 
+  async function onModel(ctx) {
+    const id = selected()
+    if (!id) return ctx.reply(NO_SESSION)
+    const sessions = await client.listSessions({ limit: 30 })
+    const models = recentModels(sessions)
+    if (!models.length) return ctx.reply('Не нашёл ни одной модели в недавних сессиях.')
+    modelChoices = models
+    const current = (sessions ?? []).find((s) => s.id === id)?.model
+    const label = current ? `${current.providerID}/${current.id}` : 'неизвестна'
+    await ctx.reply(`Текущая модель сессии: ${label}\nВыберите модель:`, {
+      reply_markup: { inline_keyboard: modelRows(models, current) },
+    })
+  }
+
   async function onMessage(ctx) {
     await guarded(ctx, async () => {
       const message = ctx.message ?? {}
@@ -182,6 +200,15 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
         await store.flush()
         onSelect(parts[1])
         return ctx.reply(`Выбрана сессия ${parts[1]}`)
+      }
+      if (parts[0] === 'mdl') {
+        const model = modelChoices[Number(parts[1])]
+        if (!model) return ctx.reply('Выбор устарел: откройте /model заново.')
+        const sessionID = selected()
+        if (!sessionID) return ctx.reply(NO_SESSION)
+        await client.switchModel({ sessionID, model })
+        await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }).catch(() => {})
+        return ctx.reply(`Модель сессии теперь ${model.providerID}/${model.id}`)
       }
       if (parts[0] === 'perm') {
         const card = permissionCards.get(parts[1])
@@ -258,6 +285,7 @@ export function createBot({ token, client, store, config, log = () => {}, mirror
         { command: 'sessions', description: 'выбрать сессию любого проекта' },
         { command: 'status', description: 'что выбрано сейчас' },
         { command: 'new', description: 'лёгкая сессия для быстрых вопросов' },
+        { command: 'model', description: 'сменить модель сессии' },
         { command: 'help', description: 'справка' },
       ])
     } catch (error) {
@@ -275,6 +303,7 @@ export function createBot({ token, client, store, config, log = () => {}, mirror
 }
 
 export { splitMessage }
+
 
 
 
