@@ -94,6 +94,26 @@ test('eventStream отдаёт события и пропускает heartbeat'
   )
 })
 
+test('eventStream дожидается async-обработчика, сохраняя порядок событий', async () => {
+  await withServer(
+    (req, res) => {
+      res.writeHead(200, { 'content-type': 'text/event-stream' })
+      res.end('data: {"id":"e1","type":"one"}\n\ndata: {"id":"e2","type":"two"}\n\n')
+    },
+    async (url) => {
+      const client = createClient({ url, password: 'x' })
+      const seen = []
+      await client.eventStream({
+        onEvent: async (event) => {
+          await new Promise((resolve) => setImmediate(resolve))
+          seen.push(event.id)
+        },
+      })
+      assert.deepEqual(seen, ['e1', 'e2'])
+    },
+  )
+})
+
 test('activeSessions возвращает список id из карты', async () => {
   await withServer(
     (req, res) => json(res, { data: { ses_a: { type: 'running' }, ses_b: { type: 'running' } } }),
@@ -116,6 +136,42 @@ test('sessionPermissions спрашивает список подтвержде�
       const list = await client.sessionPermissions('ses_a')
       assert.equal(seen, '/api/session/ses_a/permission')
       assert.equal(list[0].id, 'per_1')
+    },
+  )
+})
+
+test('listAllSessions проходит курсоры, не ограничиваясь первой страницей', async () => {
+  const urls = []
+  await withServer(
+    (req, res) => {
+      urls.push(req.url)
+      const cursor = new URL(req.url, 'http://localhost').searchParams.get('cursor')
+      if (!cursor) json(res, { data: [{ id: 's1' }], cursor: { next: 'page-2', previous: null } })
+      else json(res, { data: [{ id: 's2' }], cursor: { next: null, previous: 'page-1' } })
+    },
+    async (url) => {
+      const client = createClient({ url, password: 'x' })
+      assert.deepEqual(await client.listAllSessions(), [{ id: 's1' }, { id: 's2' }])
+      assert.match(urls[0], /^\/api\/session\?limit=100$/)
+      assert.match(urls[1], /cursor=page-2/)
+    },
+  )
+})
+
+test('listAllMessages проходит курсоры, сохраняя порядок страниц', async () => {
+  const urls = []
+  await withServer(
+    (req, res) => {
+      urls.push(req.url)
+      const cursor = new URL(req.url, 'http://localhost').searchParams.get('cursor')
+      if (!cursor) json(res, { data: [{ id: 'm1' }], cursor: { next: 'older', previous: null } })
+      else json(res, { data: [{ id: 'm2' }], cursor: { next: null, previous: 'newer' } })
+    },
+    async (url) => {
+      const client = createClient({ url, password: 'x' })
+      assert.deepEqual(await client.listAllMessages('ses_1'), [{ id: 'm1' }, { id: 'm2' }])
+      assert.match(urls[0], /^\/api\/session\/ses_1\/message\?limit=100$/)
+      assert.match(urls[1], /cursor=older/)
     },
   )
 })

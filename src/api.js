@@ -12,7 +12,7 @@ export function createClient({ url, password, fetchImpl = fetch, timeoutMs = DEF
   const base = url.replace(/\/+$/, '')
   const auth = `Basic ${Buffer.from(`opencode:${password}`).toString('base64')}`
 
-  async function call(method, path, body) {
+  async function callRaw(method, path, body) {
     const res = await fetchImpl(`${base}${path}`, {
       method,
       headers: {
@@ -28,12 +28,29 @@ export function createClient({ url, password, fetchImpl = fetch, timeoutMs = DEF
       throw new Error(`OpenCode ${method} ${path} → ${res.status}: ${text.slice(0, 200)}`)
     }
     if (res.status === 204) return null
-    const payload = await res.json()
+    return res.json()
+  }
+
+  async function call(method, path, body) {
+    const payload = await callRaw(method, path, body)
     return payload?.data ?? payload
+  }
+
+  async function collectPages(pathForCursor) {
+    const items = []
+    let cursor = null
+    do {
+      const payload = await callRaw('GET', pathForCursor(cursor))
+      items.push(...(payload?.data ?? []))
+      cursor = payload?.cursor?.next ?? null
+    } while (cursor)
+    return items
   }
 
   return {
     listSessions: ({ limit = 20 } = {}) => call('GET', `/api/session?limit=${limit}`),
+
+    listAllSessions: () => collectPages((cursor) => `/api/session?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`),
 
     createSession: ({ directory, title, model }) =>
       call('POST', '/api/session', {
@@ -51,6 +68,9 @@ export function createClient({ url, password, fetchImpl = fetch, timeoutMs = DEF
 
     messages: (sessionID, { limit = 50 } = {}) =>
       call('GET', `/api/session/${sessionID}/message?limit=${limit}`),
+
+    listAllMessages: (sessionID) =>
+      collectPages((cursor) => `/api/session/${sessionID}/message?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`),
 
     pendingPermissions: () => call('GET', '/api/permission/request'),
 
@@ -88,7 +108,7 @@ export function createClient({ url, password, fetchImpl = fetch, timeoutMs = DEF
             .join('\n')
           if (!data) continue
           try {
-            onEvent(JSON.parse(data))
+            await onEvent(JSON.parse(data))
           } catch {
             // ignore malformed event, keep the stream alive
           }
