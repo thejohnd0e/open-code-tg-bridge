@@ -132,7 +132,7 @@ test('итоги из двух сессий приходят после success,
     assert.equal(sent.length, 2)
     assert.ok(sent.some((item) => item.ownerID === 'owner-1' && item.text.includes('project-alpha · Ping check') && item.text.includes('Готово в s1.')))
     assert.ok(sent.some((item) => item.ownerID === 'owner-1' && item.text.includes('project-beta · Проверка роутера') && item.text.includes('Готово в s2.')))
-    assert.ok(sent.every((item) => item.text.startsWith('✅ Всё сделано, готово')))
+    assert.ok(sent.every((item) => item.text.startsWith('✅ All done')))
     assert.ok(sent.every((item) => !item.text.includes('Сейчас проверю файл.')))
   } finally {
     clearTimeout(timeout)

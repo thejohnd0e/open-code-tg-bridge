@@ -21,11 +21,12 @@ test('текст с markdown-символами не меняется', () => {
   assert.equal(splitMessage(t).join(''), t)
 })
 
-test('список сессий показывает выбранную и проект', () => {
+test('session list labels are English and original session title remains unchanged', () => {
   const s = [{ id: 'ses_1', title: 'Проверка', location: { directory: 'D:\\Proj' } }]
   const out = formatSessionList(s, 'ses_1')
   assert.match(out, /Проверка/)
   assert.match(out, /Proj/)
+  assert.match(out, /Sessions — Page 1 of 1/)
   assert.match(out, /→/)
 })
 
@@ -34,20 +35,25 @@ test('кнопки выбора несут id сессии в callback_data', ()
   assert.equal(rows[0][0].callback_data, 'sel:ses_1')
 })
 
-test('карточка подтверждения называет проект и сессию', () => {
+test('permission card labels are English and preserve action/session data', () => {
   const text = permissionCardText(
     { action: 'bash', resources: ['rm -rf /tmp/x'], message: 'Требуется подтверждение' },
     { title: 'Проверка связей', location: { directory: 'C:/Example/project-beta' } },
   )
   assert.match(text, /bash/)
   assert.match(text, /rm -rf \/tmp\/x/)
-  assert.match(text, /Проверка связей/)
+  assert.match(text, /Approval required: bash/)
+  assert.match(text, /Session: Проверка связей/)
   assert.match(text, /project-beta/)
 })
 
 test('без данных сессии карточка всё равно собирается', () => {
   const text = permissionCardText({ action: 'edit', resources: [] }, undefined)
   assert.match(text, /edit/)
+})
+
+test('empty session list uses English copy', () => {
+  assert.equal(formatSessionList([], null), 'No sessions found.')
 })
 
 test('страница списка сессий показывает записи и кнопки навигации для всего списка', () => {
@@ -59,8 +65,11 @@ test('страница списка сессий показывает запис
 
   assert.match(text, /11\. Сессия 11/)
   assert.doesNotMatch(text, /Сессия 1\n/)
-  assert.match(text, /Страница 2 из 3/)
+  assert.match(text, /Page 2 of 3/)
   assert.equal(choices.length, 10)
   assert.equal(choices[0][0].callback_data, 'sel:ses_11')
-  assert.deepEqual(navigation[0].map((button) => button.callback_data), ['sp:1', 'sp:3'])
+  assert.deepEqual(navigation[0], [
+    { text: '‹ Previous', callback_data: 'sp:1' },
+    { text: 'Next ›', callback_data: 'sp:3' },
+  ])
 })

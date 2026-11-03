@@ -26,10 +26,10 @@ test('обычный текст — не команда', () => {
   assert.equal(parseCommand('привет'), null)
 })
 
-test('файл 21 МБ отклоняется с текстом про 20 МБ', () => {
+test('file-size rejection explains the Telegram limit in English', () => {
   const r = checkFileSize(21 * 1024 * 1024)
   assert.equal(r.ok, false)
-  assert.match(r.reason, /20 МБ/)
+  assert.equal(r.reason, 'File is over Telegram’s 20 MB limit (21.0 MB). Please send a smaller file.')
 })
 
 test('файл 5 МБ принимается', () => {

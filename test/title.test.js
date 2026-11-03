@@ -3,9 +3,9 @@ import assert from 'node:assert/strict'
 import { sessionTitle } from '../src/format.js'
 import { createHandlers } from '../src/bot.js'
 
-test('заголовок лёгкой сессии содержит дату и время по Москве', () => {
+test('light-session title formats the Moscow date in English', () => {
   const title = sessionTitle(new Date('2026-11-03T15:40:00Z'), 'Europe/Moscow')
-  assert.equal(title, 'Telegram 03.11 18:40')
+  assert.equal(title, 'Telegram 11/03 06:40 PM')
 })
 
 test('/new создаёт сессию с датой в заголовке', async () => {
@@ -35,6 +35,6 @@ test('/new создаёт сессию с датой в заголовке', asy
     message: { text: '/new' },
     reply: async (body) => replies.push(body),
   })
-  assert.equal(created[0].title, 'Telegram 03.11 18:40')
-  assert.match(replies[0], /Telegram 03\.11 18:40/)
+  assert.equal(created[0].title, 'Telegram 11/03 06:40 PM')
+  assert.match(replies[0], /Telegram 11\/03 06:40 PM/)
 })

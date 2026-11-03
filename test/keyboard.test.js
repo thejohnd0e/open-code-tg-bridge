@@ -41,6 +41,7 @@ for (const command of ['/start', '/help']) {
     assert.equal(keyboard.resize_keyboard, true)
     assert.equal(keyboard.is_persistent, true)
     assert.equal(keyboard.one_time_keyboard, false)
+    if (command === '/start') assert.equal(ctx.replies[0].body, 'Ready. No session selected yet: /sessions')
   })
 }
 

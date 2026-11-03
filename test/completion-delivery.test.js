@@ -11,8 +11,8 @@ test('длинный итог режется по лимиту и заголов
 
   assert.ok(sent.length > 1)
   assert.ok(sent.every((part) => part.length <= 4096))
-  assert.match(sent[0], /^✅ Всё сделано, готово\nproject-beta · Проверка/)
-  assert.equal(sent.slice(1).some((part) => part.includes('✅ Всё сделано, готово')), false)
+  assert.match(sent[0], /^✅ All done\nproject-beta · Проверка/)
+  assert.equal(sent.slice(1).some((part) => part.includes('✅ All done')), false)
   assert.ok(sent.join('').includes(answer))
 })
 
@@ -53,6 +53,6 @@ test('повтор частично отправленного итога про
   await retryDelivery(completion)
 
   assert.equal(sent.length, 3)
-  assert.equal(sent[0].startsWith('✅ Всё сделано, готово'), true)
-  assert.equal(sent.slice(1).some((part) => part.includes('✅ Всё сделано, готово')), false)
+  assert.equal(sent[0].startsWith('✅ All done'), true)
+  assert.equal(sent.slice(1).some((part) => part.includes('✅ All done')), false)
 })

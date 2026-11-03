@@ -2,7 +2,7 @@ import { splitMessage } from './format.js'
 
 export function formatCompletionMessage({ project, title, text }) {
   const location = [project, title].filter(Boolean).join(' · ')
-  const header = ['✅ Всё сделано, готово', location].filter(Boolean).join('\n')
+  const header = ['✅ All done', location].filter(Boolean).join('\n')
   return text?.trim() ? `${header}\n\n${text}` : header
 }
 

@@ -30,12 +30,12 @@ function fakeCtx(text) {
 
 const config = { ownerID: 1, lightDir: 'C:/Example/Project', lightModel: 'opencode-go/gpt-6-luna' }
 
-test('/help перечисляет все команды, голосовые и подтверждения', async () => {
+test('/help lists all commands, voice messages, and approval controls in English', async () => {
   const handlers = createHandlers({ client: fakeClient(), store: fakeStore(), config, log: () => {}, files: {} })
   const ctx = fakeCtx('/help')
   await handlers.onMessage(ctx)
   const text = ctx.replies[0].body
-  for (const expected of ['/sessions', '/status', '/new', '/help', 'голосов', 'подтвержд']) {
-    assert.match(text, new RegExp(expected, 'i'), `в /help нет «${expected}»`)
+  for (const expected of ['/sessions', '/status', '/new', '/model', '/help', 'voice message', 'approval', 'Allow once', 'Deny']) {
+    assert.match(text, new RegExp(expected, 'i'), `missing “${expected}” in /help`)
   }
 })

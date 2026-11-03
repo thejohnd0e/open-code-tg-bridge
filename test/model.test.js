@@ -80,8 +80,10 @@ test('/model показывает клавиатуру и переключает
     chat: { id: 1, type: 'private' },
     callbackQuery: { data: 'mdl:1' },
     answerCallbackQuery: async () => {},
+    editMessageReplyMarkup: async () => {},
     reply: async (body) => replies.push({ body }),
   }
   await handlers.onCallback(press)
   assert.deepEqual(switched[0], { sessionID: 'ses_1', model: { providerID: 'opencode-go', id: 'deepseek-v4.1-flash' } })
+  assert.equal(replies.at(-1).body, 'Session model changed to opencode-go/deepseek-v4.1-flash')
 })

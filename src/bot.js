@@ -3,8 +3,8 @@ import { isOwner, parseCommand, checkFileSize } from './router.js'
 import { formatSessionList, sessionChoiceRows, sessionNavigationRows, splitMessage, sessionTitle, recentModels, modelRows } from './format.js'
 import { pollPermissionCards } from './permissions.js'
 
-const NO_SESSION = 'Сначала выберите сессию: /sessions'
-const SERVER_DOWN = 'Сервер OpenCode недоступен — попробуйте позже.'
+const NO_SESSION = 'Please select a session first: /sessions'
+const SERVER_DOWN = 'OpenCode server is unavailable. Please try again later.'
 const SESSION_PAGE_SIZE = 10
 const REPLY_KEYBOARD = {
   keyboard: [
@@ -69,7 +69,7 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
   async function onStart(ctx) {
     const id = selected()
     await ctx.reply(
-      id ? `На связи. Текущая сессия: ${id}` : 'На связи. Сессию ещё не выбрали: /sessions',
+      id ? `Ready. Current session: ${id}` : 'Ready. No session selected yet: /sessions',
       { reply_markup: REPLY_KEYBOARD },
     )
   }
@@ -96,11 +96,11 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
 
   async function onStatus(ctx) {
     const id = selected()
-    if (!id) return ctx.reply('Сессия не выбрана. /sessions')
+    if (!id) return ctx.reply('No session selected. /sessions')
     const sessions = await client.listSessions({ limit: 20 })
     const session = (sessions ?? []).find((s) => s.id === id)
-    if (!session) return ctx.reply(`Выбрана сессия ${id} (в последних 20 не видна)`)
-    await ctx.reply(`${session.title || '(без названия)'}\n${session.location?.directory ?? ''}\n${session.id}`)
+    if (!session) return ctx.reply(`Selected session ${id} (not found among the latest 20)`)
+    await ctx.reply(`Current session:\n${session.title || '(untitled)'}\n${session.location?.directory ?? ''}\nID: ${session.id}`)
   }
 
   async function onNew(ctx) {
@@ -111,23 +111,23 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
     })
     store.set({ selectedSessionID: session.id })
     await store.flush()
-    await ctx.reply(`Создана лёгкая сессия «${session.title ?? session.id}» в ${config.lightDir}`)
+    await ctx.reply(`Created lightweight session “${session.title ?? session.id}” in ${config.lightDir}`)
   }
 
   async function onHelp(ctx) {
     await ctx.reply(
       [
-        '/sessions — выбрать сессию любого проекта',
-        '/status — что выбрано сейчас',
-        '/new — лёгкая сессия для быстрых вопросов',
-        '/model — сменить модель выбранной сессии',
-        '/help — эта справка',
+        '/sessions — choose a session from any project',
+        '/status — show the current session',
+        '/new — create a lightweight session for quick questions',
+        '/model — change the selected session’s model',
+        '/help — show this help',
         '',
-        'Текст, фото, документ или голосовое — уйдёт в выбранную сессию.',
-        'Ответы приходят сюда; длинные делятся на части.',
-        'Запросы подтверждения приходят карточкой с кнопками «Разрешить / Всегда / Запретить».',
+        'Text, photos, documents, and voice messages are sent to the selected session.',
+        'Replies appear here; long messages are split into parts.',
+        'Approval requests appear as cards with “Allow once / Always allow / Deny” buttons.',
         '',
-        'Файлы больше 20 МБ Telegram боту не отдаёт.',
+        'Telegram does not provide files larger than 20 MB to bots.',
       ].join('\n'),
       { reply_markup: REPLY_KEYBOARD },
     )
@@ -150,13 +150,13 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
         case 'help':
           return onHelp(ctx)
         default:
-          return ctx.reply('Не знаю такой команды. /help')
+          return ctx.reply('Unknown command. /help')
       }
     }
     const id = selected()
     if (!id) return ctx.reply(NO_SESSION)
     await client.prompt({ sessionID: id, text: ctx.message.text })
-    await ctx.reply('↗ отправлено')
+    await ctx.reply('↗ Sent')
   }
 
   async function onFile(ctx) {
@@ -167,7 +167,7 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
     if (!limit.ok) return ctx.reply(limit.reason)
     const file = await files.download(ref)
     await client.prompt({ sessionID: id, text: ctx.message.caption ?? '', files: [file] })
-    await ctx.reply(`↗ ${file.name} (${Math.round(file.size / 1024)} КБ) отправлен`)
+    await ctx.reply(`↗ ${file.name} (${Math.round(file.size / 1024)} KB) sent`)
   }
 
   async function onVoice(ctx) {
@@ -185,10 +185,10 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
       text = await transcribe({ dataBase64: file.dataBase64, mime: ref.mime, name: ref.name })
     } catch (error) {
       log(`transcribe failed: ${error.message}`)
-      return ctx.reply('Не разобрал голосовое: сервис распознавания недоступен. Напишите текстом или попробуйте позже.')
+      return ctx.reply('Could not transcribe the voice message: speech recognition is unavailable. Type your message or try again later.')
     }
-    if (!text) return ctx.reply('Не разобрал речь в голосовом — попробуйте ещё раз или напишите текстом.')
-    await client.prompt({ sessionID: id, text: `голосовое: ${text}` })
+    if (!text) return ctx.reply('No speech was detected. Try again or type your message.')
+    await client.prompt({ sessionID: id, text: `Voice message: ${text}` })
     await ctx.reply(`↗ «${text.slice(0, 300)}»`)
   }
 
@@ -197,11 +197,11 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
     if (!id) return ctx.reply(NO_SESSION)
     const sessions = await client.listSessions({ limit: 30 })
     const models = recentModels(sessions)
-    if (!models.length) return ctx.reply('Не нашёл ни одной модели в недавних сессиях.')
+    if (!models.length) return ctx.reply('No models found in recent sessions.')
     modelChoices = models
     const current = (sessions ?? []).find((s) => s.id === id)?.model
-    const label = current ? `${current.providerID}/${current.id}` : 'неизвестна'
-    await ctx.reply(`Текущая модель сессии: ${label}\nВыберите модель:`, {
+    const label = current ? `${current.providerID}/${current.id}` : 'unknown'
+    await ctx.reply(`Current session model: ${label}\nChoose a model:`, {
       reply_markup: { inline_keyboard: modelRows(models, current) },
     })
   }
@@ -212,7 +212,7 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
       if (message.voice || message.audio) return onVoice(ctx)
       if (message.photo || message.document) return onFile(ctx)
       if (typeof message.text === 'string') return onText(ctx)
-      return ctx.reply('Видео и стикеры пока не поддерживаю — напишите текстом, пришлите файлом или голосовым.')
+      return ctx.reply('Videos and stickers are not supported yet. Send text, a file, or a voice message instead.')
     })
   }
 
@@ -228,28 +228,28 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
       if (parts[0] === 'sel' && parts[1]) {
         store.set({ selectedSessionID: parts[1] })
         await store.flush()
-        return ctx.reply(`Выбрана сессия ${parts[1]}`)
+        return ctx.reply(`Selected session ${parts[1]}`)
       }
       if (parts[0] === 'mdl') {
         const model = modelChoices[Number(parts[1])]
-        if (!model) return ctx.reply('Выбор устарел: откройте /model заново.')
+        if (!model) return ctx.reply('This selection has expired. Open /model again.')
         const sessionID = selected()
         if (!sessionID) return ctx.reply(NO_SESSION)
         await client.switchModel({ sessionID, model })
         await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }).catch(() => {})
-        return ctx.reply(`Модель сессии теперь ${model.providerID}/${model.id}`)
+        return ctx.reply(`Session model changed to ${model.providerID}/${model.id}`)
       }
       if (parts[0] === 'perm') {
         const card = permissionCards.get(parts[1])
         if (!card) {
           await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }).catch(() => {})
-          return ctx.reply('Карточка устарела: этот запрос уже неактуален.')
+          return ctx.reply('This approval request is stale; it is no longer active.')
         }
         const decision = parts[2]
         await client.replyPermission({ sessionID: card.sessionID, requestID: card.requestID, decision })
         permissionCards.delete(parts[1])
         await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }).catch(() => {})
-        return ctx.reply(`Решение по ${card.requestID}: ${decision}`)
+        return ctx.reply(`Decision for ${card.requestID}: ${decision}`)
       }
     })
   }

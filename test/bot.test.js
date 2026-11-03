@@ -93,13 +93,13 @@ test('текст уходит в выбранную сессию', async () => {
   assert.deepEqual(client.calls.prompt, [{ sessionID: 'ses_1', text: 'привет' }])
 })
 
-test('без выбранной сессии текст просит /sessions', async () => {
+test('without a selected session the bot asks for /sessions in English', async () => {
   const client = fakeClient()
   const handlers = createHandlers({ client, store: fakeStore({ ownerID: 1 }), config, log: () => {}, files: {} })
   const ctx = fakeCtx({ text: 'привет' })
   await handlers.onMessage(ctx)
   assert.equal(client.calls.prompt.length, 0)
-  assert.match(ctx.replies[0].body, /\/sessions/)
+  assert.equal(ctx.replies[0].body, 'Please select a session first: /sessions')
 })
 
 test('фото скачивается и уходит файлом с mime', async () => {
@@ -127,7 +127,7 @@ test('фото скачивается и уходит файлом с mime', asy
   assert.equal(client.calls.prompt[0].text, 'смотри')
 })
 
-test('голосовое распознаётся и уходит в сессию текстом с пометкой', async () => {
+test('voice transcription is sent with an English marker while transcript stays unchanged', async () => {
   const client = fakeClient()
   const files = { download: async () => ({ name: 'voice.ogg', mime: 'audio/ogg', dataBase64: 'AAA', size: 2048 }) }
   const calls = []
@@ -147,7 +147,7 @@ test('голосовое распознаётся и уходит в сесси�
   ctx.message.voice = { file_id: 'v1', file_size: 2048, duration: 2 }
   await handlers.onMessage(ctx)
   assert.equal(calls[0].mime, 'audio/ogg')
-  assert.deepEqual(client.calls.prompt, [{ sessionID: 'ses_1', text: 'голосовое: привет мир' }])
+  assert.deepEqual(client.calls.prompt, [{ sessionID: 'ses_1', text: 'Voice message: привет мир' }])
 })
 
 test('сбой распознавания — понятная ошибка, сессия не тронута', async () => {
@@ -167,7 +167,7 @@ test('сбой распознавания — понятная ошибка, с�
   ctx.message.voice = { file_id: 'v1', file_size: 2048, duration: 2 }
   await handlers.onMessage(ctx)
   assert.equal(client.calls.prompt.length, 0)
-  assert.match(ctx.replies[0].body, /[Нн]е разобрал|распозна/)
+  assert.match(ctx.replies[0].body, /speech recognition is unavailable/)
 })
 
 test('пустое распознавание не уходит в сессию', async () => {
@@ -186,16 +186,17 @@ test('пустое распознавание не уходит в сессию'
   await handlers.onMessage(ctx)
   assert.equal(client.calls.prompt.length, 0)
   assert.equal(ctx.replies.length, 1)
+  assert.equal(ctx.replies[0].body, 'No speech was detected. Try again or type your message.')
 })
 
-test('стикер и видео тоже не проваливаются в тишину', async () => {
+test('unsupported media receives an English explanation', async () => {
   const client = fakeClient()
   const handlers = createHandlers({ client, store: fakeStore({ ownerID: 1, selectedSessionID: 'ses_1' }), config, log: () => {}, files: {} })
   const ctx = fakeCtx({})
   ctx.message.video_note = { file_id: 'v2', duration: 4 }
   await handlers.onMessage(ctx)
   assert.equal(client.calls.prompt.length, 0)
-  assert.equal(ctx.replies.length, 1)
+  assert.equal(ctx.replies[0].body, 'Videos and stickers are not supported yet. Send text, a file, or a voice message instead.')
 })
 
 
@@ -221,14 +222,14 @@ test('/sessions поддерживает страницы и переходы п
   const ctx = fakeCtx({ text: '/sessions 2' })
   await handlers.onMessage(ctx)
 
-  assert.match(ctx.replies[0].body, /Страница 2 из 3/)
+  assert.match(ctx.replies[0].body, /Page 2 of 3/)
   assert.match(ctx.replies[0].body, /11\. Сессия 11/)
   assert.equal(ctx.replies[0].options.reply_markup.inline_keyboard[0][0].callback_data, 'sel:ses_11')
   assert.deepEqual(ctx.replies[0].options.reply_markup.inline_keyboard.at(-1).map((button) => button.callback_data), ['sp:1', 'sp:3'])
 
   const next = fakeCtx({ callback: 'sp:3' })
   await handlers.onCallback(next)
-  assert.match(next.replies[0].body, /Страница 3 из 3/)
+  assert.match(next.replies[0].body, /Page 3 of 3/)
   assert.match(next.replies[0].body, /21\. Сессия 21/)
 
   await handlers.onCallback(fakeCtx({ callback: 'sel:ses_11' }))
@@ -249,6 +250,7 @@ test('кнопка подтверждения берёт сессию и зап�
   const ctx = fakeCtx({ callback: 'perm:k1:once' })
   await handlers.onCallback(ctx)
   assert.deepEqual(client.calls.reply, [{ sessionID: 'ses_other', requestID: 'req_9', decision: 'once' }])
+  assert.equal(ctx.replies[0].body, 'Decision for req_9: once')
 })
 
 test('ошибка ответа OpenCode оставляет карточку подтверждения доступной для повтора', async () => {
@@ -267,7 +269,7 @@ test('ошибка ответа OpenCode оставляет карточку п�
   await handlers.onCallback(ctx)
 
   assert.equal(cards.has('k1'), true)
-  assert.match(ctx.replies.at(-1).body, /Сервер OpenCode недоступен/)
+  assert.match(ctx.replies.at(-1).body, /OpenCode server is unavailable/)
 })
 
 test('устаревшая карточка не роняет обработчик', async () => {
@@ -283,7 +285,42 @@ test('устаревшая карточка не роняет обработчи
   const ctx = fakeCtx({ callback: 'perm:gone:reject' })
   await handlers.onCallback(ctx)
   assert.equal(client.calls.reply.length, 0)
-  assert.match(ctx.replies[0].body, /устарел/)
+  assert.match(ctx.replies[0].body, /This approval request is stale/)
+})
+
+test('session picker callback confirms selection in English', async () => {
+  const state = { ownerID: 1, selectedSessionID: null }
+  const store = { get: () => state, set: (patch) => Object.assign(state, patch), flush: async () => {} }
+  const handlers = createHandlers({ client: fakeClient(), store, config, log: () => {}, files: {} })
+  const ctx = fakeCtx({ callback: 'sel:ses_1' })
+  await handlers.onCallback(ctx)
+  assert.equal(ctx.replies[0].body, 'Selected session ses_1')
+})
+
+test('status and new-session responses use English labels while preserving session data', async () => {
+  const client = fakeClient({
+    listSessions: async () => [{ id: 'ses_1', title: 'Русское название', location: { directory: 'D:\\Proj' } }],
+    createSession: async (args) => ({ id: 'ses_new', title: args.title, location: { directory: args.directory } }),
+  })
+  const store = fakeStore({ ownerID: 1, selectedSessionID: 'ses_1' })
+  const handlers = createHandlers({ client, store, config, log: () => {}, files: {}, now: () => new Date('2026-11-03T15:40:00Z') })
+  const status = fakeCtx({ text: '/status' })
+  await handlers.onMessage(status)
+  assert.match(status.replies[0].body, /^Current session:\nРусское название/)
+
+  const fresh = fakeCtx({ text: '/new' })
+  await handlers.onMessage(fresh)
+  assert.match(fresh.replies[0].body, /^Created lightweight session /)
+})
+
+test('model picker prompts in English and preserves model identifiers', async () => {
+  const client = fakeClient({
+    listSessions: async () => [{ id: 'ses_1', title: 'Model sample', model: { providerID: 'provider', id: 'model-a' } }],
+  })
+  const handlers = createHandlers({ client, store: fakeStore({ ownerID: 1, selectedSessionID: 'ses_1' }), config, log: () => {}, files: {} })
+  const ctx = fakeCtx({ text: '/model' })
+  await handlers.onMessage(ctx)
+  assert.equal(ctx.replies[0].body, 'Current session model: provider/model-a\nChoose a model:')
 })
 
 test('повторный update_id не выполняет команду дважды', async () => {

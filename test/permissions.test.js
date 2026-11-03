@@ -28,6 +28,9 @@ test('карточка уходит с проектом и коротким кл
   assert.match(text, /whoami/)
   assert.match(text, /Проверка связей/)
   const buttons = options.reply_markup.inline_keyboard[0]
+  assert.deepEqual(buttons.map(({ text }) => text), ['Allow once', 'Always allow', 'Deny'])
+  assert.match(text, /Approval required: shell/)
+  assert.match(text, /Session: Проверка связей/)
   assert.equal(buttons[0].callback_data, 'perm:1:once')
   assert.deepEqual(cards.get('1'), { sessionID: 's1', requestID: 'per_1' })
 })

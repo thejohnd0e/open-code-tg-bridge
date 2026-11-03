@@ -37,7 +37,7 @@ function clampPage(page, pageCount) {
 }
 
 export function formatSessionList(sessions, selectedID, limit = 10, page = 1) {
-  if (!sessions.length) return 'Сессий нет.'
+  if (!sessions.length) return 'No sessions found.'
   const pageCount = Math.max(1, Math.ceil(sessions.length / limit))
   const currentPage = clampPage(page, pageCount)
   const start = (currentPage - 1) * limit
@@ -46,12 +46,12 @@ export function formatSessionList(sessions, selectedID, limit = 10, page = 1) {
     .map((s, index) => {
       const i = start + index
       const mark = s.id === selectedID ? '→ ' : '   '
-      const title = truncate(s.title || '(без названия)', 60)
+      const title = truncate(s.title || '(untitled)', 60)
       const dir = lastSegment(s.location?.directory)
       return `${mark}${i + 1}. ${title}${dir ? ` — ${dir}` : ''}`
     })
     .join('\n')
-    .replace(/^/, `Сессии — Страница ${currentPage} из ${pageCount}\n`)
+    .replace(/^/, `Sessions — Page ${currentPage} of ${pageCount}\n`)
 }
 
 export function sessionChoiceRows(sessions, limit = 10, page = 1) {
@@ -59,7 +59,7 @@ export function sessionChoiceRows(sessions, limit = 10, page = 1) {
   const currentPage = clampPage(page, pageCount)
   const start = (currentPage - 1) * limit
   return sessions.slice(start, start + limit).map((session, index) => [
-    { text: `${start + index + 1}. ${truncate(session.title || '(без названия)', 40)}`, callback_data: `sel:${session.id}` },
+    { text: `${start + index + 1}. ${truncate(session.title || '(untitled)', 40)}`, callback_data: `sel:${session.id}` },
   ])
 }
 
@@ -67,13 +67,13 @@ export function sessionNavigationRows(sessions, page, limit = 10) {
   const pageCount = Math.max(1, Math.ceil(sessions.length / limit))
   const currentPage = clampPage(page, pageCount)
   const buttons = []
-  if (currentPage > 1) buttons.push({ text: '‹ Назад', callback_data: `sp:${currentPage - 1}` })
-  if (currentPage < pageCount) buttons.push({ text: 'Далее ›', callback_data: `sp:${currentPage + 1}` })
+  if (currentPage > 1) buttons.push({ text: '‹ Previous', callback_data: `sp:${currentPage - 1}` })
+  if (currentPage < pageCount) buttons.push({ text: 'Next ›', callback_data: `sp:${currentPage + 1}` })
   return buttons.length ? [buttons] : []
 }
 
 export function sessionTitle(now, timeZone = 'Europe/Moscow') {
-  const formatted = new Intl.DateTimeFormat('ru-RU', {
+  const formatted = new Intl.DateTimeFormat('en-US', {
     timeZone,
     day: '2-digit',
     month: '2-digit',
@@ -107,13 +107,13 @@ export function modelRows(models, current) {
 
 export function permissionCardText(request, session) {
   const where = session
-    ? `${truncate(session.title || '(без названия)', 60)} · ${lastSegment(session.location?.directory)}`
+      ? `${truncate(session.title || '(untitled)', 60)} · ${lastSegment(session.location?.directory)}`
     : request.sessionID
   return [
-    `Подтверждение: ${request.action}`,
+    `Approval required: ${request.action}`,
     (request.resources ?? []).join('\n').slice(0, 600),
     request.message,
-    `сессия: ${where}`,
+    `Session: ${where}`,
   ]
     .filter(Boolean)
     .join('\n')

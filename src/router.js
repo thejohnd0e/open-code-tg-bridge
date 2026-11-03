@@ -32,7 +32,7 @@ export function checkFileSize(size) {
     const mb = (size / (1024 * 1024)).toFixed(1)
     return {
       ok: false,
-      reason: `Файл ${mb} МБ больше лимита Telegram в 20 МБ (после base64 он весит ещё на треть больше). Пришлите файл поменьше.`,
+    reason: `File is over Telegram’s 20 MB limit (${mb} MB). Please send a smaller file.`,
     }
   }
   return { ok: true }

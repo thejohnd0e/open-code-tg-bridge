@@ -43,9 +43,9 @@ export async function pollPermissionCards({
           reply_markup: {
             inline_keyboard: [
               [
-                { text: 'Разрешить', callback_data: `perm:${key}:once` },
-                { text: 'Всегда', callback_data: `perm:${key}:always` },
-                { text: 'Запретить', callback_data: `perm:${key}:reject` },
+                { text: 'Allow once', callback_data: `perm:${key}:once` },
+                { text: 'Always allow', callback_data: `perm:${key}:always` },
+                { text: 'Deny', callback_data: `perm:${key}:reject` },
               ],
             ],
           },
