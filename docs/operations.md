@@ -1,0 +1,78 @@
+# Эксплуатация
+
+## Здоровье
+
+```bash
+docker ps --filter name=tg-bridge            # Up (healthy)
+docker exec tg-bridge node -e "fetch('http://127.0.0.1:8080/healthz').then(r=>r.text()).then(console.log)"
+```
+
+`healthz` отвечает `ok`, даже если Telegram или OpenCode недоступны: контейнер
+жив, а ошибки видны в логе. Так сделано намеренно — иначе плохой токен вызывал
+бы цикл перезапусков.
+
+## Логи
+
+```bash
+docker logs --since 30m tg-bridge 2>&1 | tail -50
+docker logs -f tg-bridge
+```
+
+Что искать:
+
+| Строка | Значение |
+|---|---|
+| `bot @ExampleBot started` | запуск бота |
+| `unauthorized user_id=N` | писал чужой аккаунт (или владелец до привязки) |
+| `mirror watch ses_…` | переключились на другую сессию |
+| `mirror deliver … N chars` | ответ ушёл в Telegram, длина N |
+| `mirror send failed: …` | Telegram не принял сообщение (состояние откатилось) |
+| `event stream error: …` | поток событий оборвался, будет переподключение |
+| `handler failed: …` | ошибка обработчика |
+| `transcribe failed: …` | не сработало распознавание |
+
+Отправка карточек подтверждений успешно **не логируется** — видно только ошибки
+(см. `TODO.md`).
+
+## Обновление версии
+
+```bash
+# локально: тесты
+cd telegram-bridge && npm test
+
+# перенос и сборка
+tar -czf tgbridge.tgz package.json package-lock.json src Dockerfile compose.yaml .env.example
+scp tgbridge.tgz root@192.0.2.1:/root/
+ssh root@192.0.2.1 'tar -xzf /root/tgbridge.tgz -C /root/TgBridge && cd /root/TgBridge && docker compose build && docker compose up -d --no-build'
+```
+
+`--force-recreate` нужен, если менялся `.env`: переменные читаются только при
+создании контейнера.
+
+## Перезапуск
+
+```bash
+docker restart tg-bridge         # состояние и выбранная сессия сохраняются
+```
+
+После старта бот сверяется с историей сессии и досылает только пропущенное:
+ответ, пришедший во время перезапуска, доходит один раз.
+
+## Резервная копия состояния
+
+```bash
+docker exec tg-bridge cat /data/state.json > state-backup.json
+```
+
+Восстановление — положить файл обратно в том и перезапустить контейнер.
+Ничего секретного в нём нет: только id сессий и курсор.
+
+## Секреты
+
+| Что | Где |
+|---|---|
+| Токен бота | `/root/TgBridge/.env` (600) на Linux host |
+| Пароль API OpenCode | там же, и в `~/.config/opencode/service.json` на Windows |
+| Токен распознавания | там же, и в `C:/Example/Project` |
+
+В git не попадают: `.env` в `.gitignore`.
