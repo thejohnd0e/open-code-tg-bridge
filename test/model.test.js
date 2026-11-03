@@ -66,7 +66,7 @@ test('/model показывает клавиатуру и переключает
   const replies = []
   const ctx = {
     from: { id: 1 },
-    chat: { id: 1 },
+    chat: { id: 1, type: 'private' },
     message: { text: '/model' },
     reply: async (body, options) => replies.push({ body, options }),
   }
@@ -77,7 +77,7 @@ test('/model показывает клавиатуру и переключает
 
   const press = {
     from: { id: 1 },
-    chat: { id: 1 },
+    chat: { id: 1, type: 'private' },
     callbackQuery: { data: 'mdl:1' },
     answerCallbackQuery: async () => {},
     reply: async (body) => replies.push({ body }),

@@ -51,6 +51,7 @@ const { bot, start, stop } = createBot({
 const delivery = createCompletionDelivery({
   ownerID: config.ownerID,
   sendMessage: (ownerID, text) => bot.api.sendMessage(ownerID, text),
+  store,
   log,
 })
 const completions = createCompletionTracker({ client, store, onComplete: delivery, log })

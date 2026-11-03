@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { splitMessage, formatSessionList, sessionChoiceRows, permissionCardText } from '../src/format.js'
+import { splitMessage, formatSessionList, sessionChoiceRows, permissionCardText, sessionNavigationRows } from '../src/format.js'
 
 test('короткий текст не режется', () => {
   assert.deepEqual(splitMessage('привет'), ['привет'])
@@ -48,4 +48,19 @@ test('карточка подтверждения называет проект 
 test('без данных сессии карточка всё равно собирается', () => {
   const text = permissionCardText({ action: 'edit', resources: [] }, undefined)
   assert.match(text, /edit/)
+})
+
+test('страница списка сессий показывает записи и кнопки навигации для всего списка', () => {
+  const sessions = Array.from({ length: 25 }, (_, i) => ({ id: `ses_${i + 1}`, title: `Сессия ${i + 1}`, location: { directory: `D:\\Projects\\P${i + 1}` } }))
+  const page = 2
+  const text = formatSessionList(sessions, 'ses_11', 10, page)
+  const choices = sessionChoiceRows(sessions, 10, page)
+  const navigation = sessionNavigationRows(sessions, page, 10)
+
+  assert.match(text, /11\. Сессия 11/)
+  assert.doesNotMatch(text, /Сессия 1\n/)
+  assert.match(text, /Страница 2 из 3/)
+  assert.equal(choices.length, 10)
+  assert.equal(choices[0][0].callback_data, 'sel:ses_11')
+  assert.deepEqual(navigation[0].map((button) => button.callback_data), ['sp:1', 'sp:3'])
 })

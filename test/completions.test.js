@@ -118,8 +118,6 @@ test('первичная синхронизация сохраняет per-sessi
     onComplete: async () => {},
     startedAt: 300,
   })
-  const client = tracker // tracker doesn't expose its client; histories are checked below via fake override instead
-
   await tracker.syncHistory({ initial: true })
 
   assert.equal(state.get().completionInitialized, true)
@@ -178,6 +176,27 @@ test('reconnect reads histories only for sessions updated since their cursor', a
   assert.deepEqual(historyCalls, ['changed'])
   assert.deepEqual(delivered.map((item) => item.text), ['новый итог'])
   assert.equal(state.get().completionCursors.changed.updatedAt, 60)
+})
+
+test('reconnect delivers a new success even if the session had no prior completion cursor', async () => {
+  const delivered = []
+  const state = store({
+    completionInitialized: true,
+    completionCursors: { s1: { completionID: null, eventID: 'history', updatedAt: 20 } },
+  })
+  const tracker = createCompletionTracker({
+    client: fakeClient({
+      sessions: [{ id: 's1', title: 'Первая работа', location: { directory: 'D:\\Projects\\Demo' }, time: { updated: 40 } }],
+      histories: { s1: [assistant('a1', 'новый итог', 30), idle('idle-1', 'succeeded', 35)] },
+    }),
+    store: state,
+    onComplete: async (item) => delivered.push(item),
+  })
+
+  await tracker.syncHistory()
+
+  assert.equal(delivered.length, 1)
+  assert.equal(delivered[0].completionID, 'idle-1')
 })
 
 test('повторное завершение после сохранённого курсора доставляет только новый ответ', async () => {
@@ -241,6 +260,7 @@ test('успешное выполнение без ответа всё равн�
     }),
     store: store({ completionCursors: { s1: { completionID: 'idle-before', eventID: 'history', updatedAt: 10 } } }),
     onComplete: async (item) => delivered.push(item),
+    startedAt: 0,
   })
 
   await tracker.handleEvent({ id: 'evt-1', type: 'session.execution.succeeded', data: { sessionID: 's1' } })
@@ -267,4 +287,100 @@ test('completion event queued during initial sync is sent once after baseline', 
 
   assert.equal(delivered.length, 1)
   assert.equal(delivered[0].completionID, 'idle-1')
+})
+
+test('two successes queued while first-start baseline is loading are both delivered in order', async () => {
+  const delivered = []
+  const histories = {
+    s1: [
+      assistant('a-old', 'исторический ответ', 5), idle('idle-old', 'succeeded', 8),
+      assistant('a1', 'первый новый итог', 20), idle('idle-1', 'succeeded', 24),
+      assistant('a2', 'второй новый итог', 30), idle('idle-2', 'succeeded', 34),
+    ],
+  }
+  const client = fakeClient({
+    sessions: [{ id: 's1', title: 'Работа', location: { directory: 'D:\\Projects\\Demo' }, time: { updated: 34 } }],
+    histories,
+  })
+  const state = store()
+  const tracker = createCompletionTracker({ client, store: state, onComplete: async (item) => delivered.push(item.completionID), startedAt: 10 })
+
+  await tracker.syncHistory({ initial: true })
+  await tracker.handleEvent({ id: 'evt-1', created: 25, type: 'session.execution.succeeded', data: { sessionID: 's1' } })
+  await tracker.handleEvent({ id: 'evt-2', created: 35, type: 'session.execution.succeeded', data: { sessionID: 's1' } })
+
+  assert.deepEqual(delivered, ['idle-1', 'idle-2'])
+})
+
+test('failed completion send is retried while the SSE connection stays open', async () => {
+  const history = [assistant('a0', 'old', 5), idle('idle-0', 'succeeded', 10)]
+  const sessions = [{ id: 's1', title: 'Retry', location: { directory: 'D:\\Projects\\Retry' }, time: { updated: 10 } }]
+  let attempts = 0
+  const state = store()
+  const client = fakeClient({ sessions, histories: { s1: history } })
+  client.eventStream = async ({ onEvent, signal }) => {
+    await onEvent({ id: 'connected', type: 'server.connected', data: {} })
+    history.push(assistant('a1', 'retry me', 20), idle('idle-1', 'succeeded', 21))
+    sessions[0].time.updated = 21
+    await onEvent({ id: 'evt-1', type: 'session.execution.succeeded', created: 22, data: { sessionID: 's1' } })
+    await new Promise((resolve) => signal.addEventListener('abort', resolve, { once: true }))
+  }
+  const tracker = createCompletionTracker({
+    client,
+    store: state,
+    syncIntervalMs: 10,
+    startedAt: 0,
+    onComplete: async () => {
+      attempts += 1
+      if (attempts === 1) throw new Error('Telegram temporarily unavailable')
+    },
+  })
+  const running = tracker.start()
+  let timeout
+  let checkInterval
+  try {
+    await Promise.race([
+      new Promise((resolve) => {
+        checkInterval = setInterval(() => {
+          if (attempts >= 2) resolve()
+        }, 5)
+      }),
+      new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error('completion retry did not run')), 1000) }),
+    ])
+    assert.equal(state.get().completionCursors.s1.completionID, 'idle-1')
+  } finally {
+    clearTimeout(timeout)
+    clearInterval(checkInterval)
+    tracker.stop()
+    await running
+  }
+})
+
+test('periodic history sync and SSE completion are serialized per session', async () => {
+  const delivered = []
+  const state = store({
+    completionInitialized: true,
+    completionCursors: { s1: { completionID: 'idle-0', eventID: 'history', updatedAt: 10 } },
+  })
+  const client = fakeClient({
+    sessions: [{ id: 's1', title: 'Параллельная сессия', location: { directory: 'D:\\Projects\\Demo' }, time: { updated: 40 } }],
+    histories: {
+      s1: [assistant('a0', 'старый', 5), idle('idle-0', 'succeeded', 10), assistant('a1', 'новый', 30), idle('idle-1', 'succeeded', 40)],
+    },
+  })
+  const tracker = createCompletionTracker({
+    client,
+    store: state,
+    onComplete: async (item) => {
+      delivered.push(item.completionID)
+      await new Promise((resolve) => setImmediate(resolve))
+    },
+  })
+
+  await Promise.all([
+    tracker.syncHistory(),
+    tracker.handleEvent({ id: 'evt-1', created: 41, type: 'session.execution.succeeded', data: { sessionID: 's1' } }),
+  ])
+
+  assert.deepEqual(delivered, ['idle-1'])
 })

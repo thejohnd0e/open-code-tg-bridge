@@ -1,10 +1,11 @@
 import { Bot } from 'grammy'
 import { isOwner, parseCommand, checkFileSize } from './router.js'
-import { formatSessionList, sessionChoiceRows, splitMessage, sessionTitle, recentModels, modelRows } from './format.js'
+import { formatSessionList, sessionChoiceRows, sessionNavigationRows, splitMessage, sessionTitle, recentModels, modelRows } from './format.js'
 import { pollPermissionCards } from './permissions.js'
 
 const NO_SESSION = 'Сначала выберите сессию: /sessions'
 const SERVER_DOWN = 'Сервер OpenCode недоступен — попробуйте позже.'
+const SESSION_PAGE_SIZE = 10
 const REPLY_KEYBOARD = {
   keyboard: [
     [{ text: 'Сессии' }, { text: 'Новая' }],
@@ -43,8 +44,9 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
   let modelChoices = []
 
   async function guarded(ctx, action) {
-    if (!isOwner(ctx.from?.id, owner())) {
-      log(`unauthorized user_id=${ctx.from?.id}`)
+    const chat = ctx.chat ?? ctx.callbackQuery?.message?.chat
+    if (!isOwner(ctx.from?.id, owner()) || chat?.type !== 'private' || !isOwner(chat?.id, owner())) {
+      log(`unauthorized user_id=${ctx.from?.id} chat_id=${chat?.id} chat_type=${chat?.type}`)
       return
     }
     const updateID = ctx.update?.update_id
@@ -72,12 +74,24 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
     )
   }
 
-  async function onSessions(ctx) {
-    const sessions = await client.listSessions({ limit: 20 })
+  async function showSessions(ctx, requestedPage = 1, { edit = false } = {}) {
+    const sessions = await client.listAllSessions()
     const id = selected()
-    await ctx.reply(formatSessionList(sessions, id), {
-      reply_markup: { inline_keyboard: sessionChoiceRows(sessions) },
-    })
+    const pages = Math.max(1, Math.ceil(sessions.length / SESSION_PAGE_SIZE))
+    const page = Math.min(pages, Math.max(1, Number.isInteger(requestedPage) ? requestedPage : 1))
+    const text = formatSessionList(sessions, id, SESSION_PAGE_SIZE, page)
+    const inline_keyboard = [
+      ...sessionChoiceRows(sessions, SESSION_PAGE_SIZE, page),
+      ...sessionNavigationRows(sessions, page, SESSION_PAGE_SIZE),
+    ]
+    const options = { reply_markup: { inline_keyboard } }
+    if (edit) return ctx.editMessageText(text, options)
+    return ctx.reply(text, options)
+  }
+
+  async function onSessions(ctx, args = '') {
+    const requestedPage = Number(args.trim())
+    return showSessions(ctx, Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1)
   }
 
   async function onStatus(ctx) {
@@ -126,7 +140,7 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
         case 'start':
           return onStart(ctx)
         case 'sessions':
-          return onSessions(ctx)
+          return onSessions(ctx, command.args)
         case 'status':
           return onStatus(ctx)
         case 'new':
@@ -207,6 +221,10 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
       const data = ctx.callbackQuery?.data ?? ''
       const parts = data.split(':')
       await ctx.answerCallbackQuery().catch(() => {})
+      if (parts[0] === 'sp') {
+        const page = Number(parts[1])
+        return showSessions(ctx, Number.isInteger(page) && page > 0 ? page : 1, { edit: true })
+      }
       if (parts[0] === 'sel' && parts[1]) {
         store.set({ selectedSessionID: parts[1] })
         await store.flush()
@@ -228,8 +246,8 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
           return ctx.reply('Карточка устарела: этот запрос уже неактуален.')
         }
         const decision = parts[2]
-        permissionCards.delete(parts[1])
         await client.replyPermission({ sessionID: card.sessionID, requestID: card.requestID, decision })
+        permissionCards.delete(parts[1])
         await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }).catch(() => {})
         return ctx.reply(`Решение по ${card.requestID}: ${decision}`)
       }

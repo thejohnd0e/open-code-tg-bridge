@@ -56,3 +56,31 @@ test('сессия, у которой подтверждений нет, не м
   })
   assert.equal(sent.length, 1)
 })
+
+test('ошибка Telegram при отправке карточки не помечает запрос увиденным', async () => {
+  const sent = []
+  const cards = new Map()
+  const seen = new Set()
+  let fail = true
+  const args = {
+    client: fakeClient(),
+    ownerID: 1,
+    cards,
+    seen,
+    keySeq: { value: 0 },
+    sendMessage: async (...values) => {
+      if (fail) throw new Error('Telegram unavailable')
+      sent.push(values)
+    },
+  }
+
+  assert.equal(await pollPermissionCards(args), 0)
+  assert.equal(seen.has('per_1'), false)
+  assert.equal(cards.size, 0)
+
+  fail = false
+  assert.equal(await pollPermissionCards(args), 1)
+  assert.equal(seen.has('per_1'), true)
+  assert.equal(cards.size, 1)
+  assert.equal(sent.length, 1)
+})

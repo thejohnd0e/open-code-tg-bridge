@@ -50,10 +50,13 @@ export function createCompletionTracker({
   onComplete = async () => {},
   log = () => {},
   reconnectDelayMs = 2000,
+  syncIntervalMs = 30_000,
   startedAt = Date.now(),
 }) {
   let stopped = false
   let controller = null
+  let syncTimer = null
+  let syncPromise = null
   const sessions = new Map()
   const queues = new Map()
 
@@ -109,20 +112,18 @@ export function createCompletionTracker({
       ? records.findIndex((record) => record.id === cursor.completionID)
       : -1
     const cutoff = since ?? cursor.updatedAt ?? session.time?.created ?? startedAt
-    let pending = cursorIndex >= 0
+    const afterCursor = cursorIndex >= 0
       ? records.slice(cursorIndex + 1)
-      : records.filter((record) => record.created > cutoff)
-
-    if (event && !hasCursor) {
-      // A success event proves this is new work. If several completions arrived
-      // before the event queue drained, preserve all records newer than the
-      // per-session baseline; otherwise use the latest record as a fallback.
-      if (!pending.length && records.length) pending = [records.at(-1)]
-    } else if (event && pending.length === 0) {
-      const latest = records.at(-1)
-      if (latest && latest.id !== cursor.completionID && event.created >= startedAt) {
-        pending = [latest]
-      }
+      : records.filter((record) => record.created > (event ? startedAt : cutoff))
+    let pending = afterCursor
+    if (event) {
+      const beforeEvent = Number.isFinite(event.created)
+        ? afterCursor.filter((record) => record.created <= event.created)
+        : afterCursor
+      // One SSE success event corresponds to one turn. If multiple events are
+      // queued during baseline/reconnect, the per-session queue advances one
+      // matching idle record at a time instead of collapsing to the latest.
+      pending = beforeEvent.length ? [beforeEvent[0]] : afterCursor.length ? [afterCursor[0]] : []
     }
 
     for (let index = 0; index < pending.length; index += 1) {
@@ -141,6 +142,19 @@ export function createCompletionTracker({
       updatedAt: Math.max(updated.updatedAt ?? 0, session.time?.updated ?? 0, latestMessageAt),
     }
     return saveCursors(after)
+  }
+
+  function enqueueSession(session, options) {
+    const previous = queues.get(session.id) ?? Promise.resolve()
+    const current = previous
+      .catch(() => {})
+      .then(() => processSession(session, options))
+      .catch((error) => {
+        log(`completion history failed for ${session.id}: ${error.message}`)
+        return false
+      })
+    queues.set(session.id, current)
+    return current
   }
 
   async function syncHistory({ initial = false } = {}) {
@@ -175,47 +189,49 @@ export function createCompletionTracker({
       const updatedAt = typeof cursor === 'string' ? 0 : cursor?.updatedAt
       const sessionUpdated = session.time?.updated
       if (cursor && Number.isFinite(updatedAt) && Number.isFinite(sessionUpdated) && sessionUpdated <= updatedAt) continue
-      try {
-        const ok = await processSession(session, { since: updatedAt ?? session.time?.created ?? startedAt })
-        if (!ok) complete = false
-      } catch (error) {
-        complete = false
-        log(`completion history failed for ${session.id}: ${error.message}`)
-      }
+      const ok = await enqueueSession(session, { since: updatedAt ?? session.time?.created ?? startedAt })
+      if (!ok) complete = false
     }
     if (!complete) log('completion history sync incomplete; unchanged cursors will be retried')
   }
 
-  function handleEvent(event) {
+  function scheduleSync(options = {}) {
+    if (syncPromise) return syncPromise
+    syncPromise = syncHistory(options).finally(() => {
+      syncPromise = null
+    })
+    return syncPromise
+  }
+
+  async function handleEvent(event) {
     if (event.type !== 'session.execution.succeeded') return Promise.resolve()
     const sessionID = event.data?.sessionID
     if (!sessionID) return Promise.resolve()
 
-    const previous = queues.get(sessionID) ?? Promise.resolve()
-    const current = previous
-      .catch(() => {})
-      .then(async () => {
-        let session = sessions.get(sessionID)
-        if (!session) {
-          try {
-            await loadSessions()
-            session = sessions.get(sessionID)
-          } catch (error) {
-            log(`completion session lookup failed for ${sessionID}: ${error.message}`)
-          }
-        }
-        if (!session) {
-          session = { id: sessionID, title: sessionID, location: { directory: '' } }
-        }
-        await processSession(session, { event })
-      })
-      .catch((error) => log(`completion event failed for ${sessionID}: ${error.message}`))
-    queues.set(sessionID, current)
-    return current
+    let session = sessions.get(sessionID)
+    if (!session) {
+      try {
+        await loadSessions()
+        session = sessions.get(sessionID)
+      } catch (error) {
+        log(`completion session lookup failed for ${sessionID}: ${error.message}`)
+      }
+    }
+    if (!session) {
+      session = { id: sessionID, title: sessionID, location: { directory: '' } }
+    }
+    const cursor = store.get().completionCursors?.[sessionID]
+    const since = typeof cursor === 'string' ? 0 : cursor?.updatedAt ?? session.time?.created ?? startedAt
+    return enqueueSession(session, { event, since })
   }
 
   async function start() {
     stopped = false
+    if (syncTimer) clearInterval(syncTimer)
+    syncTimer = setInterval(() => {
+      scheduleSync().catch((error) => log(`completion periodic sync failed: ${error.message}`))
+    }, syncIntervalMs)
+    syncTimer.unref?.()
     while (!stopped) {
       controller = new AbortController()
       let bootstrapped = false
@@ -225,7 +241,7 @@ export function createCompletionTracker({
           onEvent: async (event) => {
             if (!bootstrapped) {
               const initial = !store.get().completionInitialized
-              await syncHistory({ initial })
+              await scheduleSync({ initial })
               bootstrapped = true
             }
             await handleEvent(event)
@@ -242,6 +258,8 @@ export function createCompletionTracker({
 
   function stop() {
     stopped = true
+    if (syncTimer) clearInterval(syncTimer)
+    syncTimer = null
     controller?.abort()
   }
 

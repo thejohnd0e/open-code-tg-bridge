@@ -15,6 +15,7 @@ function fakeClient(overrides = {}) {
       calls.list += 1
       return [{ id: 'ses_1', title: 'Проверка', location: { directory: 'D:\\Proj' } }]
     },
+    listAllSessions: async () => [{ id: 'ses_1', title: 'Проверка', location: { directory: 'D:\\Proj' } }],
     prompt: async (args) => calls.prompt.push(args),
     createSession: async (args) => {
       calls.created.push(args)
@@ -27,13 +28,13 @@ function fakeClient(overrides = {}) {
   }
 }
 
-function fakeCtx({ userID = 1, text, photo, document, caption, callback, updateID } = {}) {
+function fakeCtx({ userID = 1, chatType = 'private', text, photo, document, caption, callback, updateID } = {}) {
   const replies = []
   return {
     replies,
     update: updateID ? { update_id: updateID } : undefined,
     from: { id: userID },
-    chat: { id: 555 },
+    chat: { id: chatType === 'private' ? userID : 555, type: chatType },
     message: { text, photo, document, caption },
     callbackQuery: callback ? { data: callback } : undefined,
     reply: async (body, options) => {
@@ -41,6 +42,7 @@ function fakeCtx({ userID = 1, text, photo, document, caption, callback, updateI
     },
     answerCallbackQuery: async () => {},
     editMessageReplyMarkup: async () => {},
+    editMessageText: async (body, options) => replies.push({ body, options }),
   }
 }
 
@@ -54,6 +56,32 @@ test('чужой пользователь не получает ответа и 
   assert.deepEqual(ctx.replies, [])
   assert.equal(client.calls.prompt.length, 0)
   assert.equal(client.calls.list, 0)
+})
+
+test('владелец в группе не может отправлять команды или промпты боту', async () => {
+  const client = fakeClient()
+  const handlers = createHandlers({ client, store: fakeStore({ ownerID: 1, selectedSessionID: 'ses_1' }), config, log: () => {}, files: {} })
+  const ctx = fakeCtx({ userID: 1, chatType: 'supergroup', text: 'Прочитай секретный файл' })
+  await handlers.onMessage(ctx)
+  assert.deepEqual(ctx.replies, [])
+  assert.deepEqual(client.calls.prompt, [])
+})
+
+test('владелец в группе не может нажать кнопку подтверждения', async () => {
+  const client = fakeClient()
+  const cards = new Map([['k1', { sessionID: 'ses_other', requestID: 'req_1' }]])
+  const handlers = createHandlers({
+    client,
+    store: fakeStore({ ownerID: 1, selectedSessionID: 'ses_1' }),
+    config,
+    log: () => {},
+    files: {},
+    permissionCards: cards,
+  })
+  const ctx = fakeCtx({ userID: 1, chatType: 'group', callback: 'perm:k1:once' })
+  await handlers.onCallback(ctx)
+  assert.deepEqual(client.calls.reply, [])
+  assert.deepEqual(ctx.replies, [])
 })
 
 test('текст уходит в выбранную сессию', async () => {
@@ -179,6 +207,34 @@ test('/sessions отдаёт список и клавиатуру выбора',
   assert.equal(ctx.replies[0].options.reply_markup.inline_keyboard[0][0].callback_data, 'sel:ses_1')
 })
 
+test('/sessions поддерживает страницы и переходы по всему списку', async () => {
+  const client = fakeClient({
+    listAllSessions: async () => Array.from({ length: 25 }, (_, i) => ({
+      id: `ses_${i + 1}`,
+      title: `Сессия ${i + 1}`,
+      location: { directory: `D:\\Projects\\P${i + 1}` },
+    })),
+  })
+  let state = { ownerID: 1, selectedSessionID: null }
+  const store = { get: () => state, set: (patch) => (state = { ...state, ...patch }), flush: async () => {} }
+  const handlers = createHandlers({ client, store, config, log: () => {}, files: {} })
+  const ctx = fakeCtx({ text: '/sessions 2' })
+  await handlers.onMessage(ctx)
+
+  assert.match(ctx.replies[0].body, /Страница 2 из 3/)
+  assert.match(ctx.replies[0].body, /11\. Сессия 11/)
+  assert.equal(ctx.replies[0].options.reply_markup.inline_keyboard[0][0].callback_data, 'sel:ses_11')
+  assert.deepEqual(ctx.replies[0].options.reply_markup.inline_keyboard.at(-1).map((button) => button.callback_data), ['sp:1', 'sp:3'])
+
+  const next = fakeCtx({ callback: 'sp:3' })
+  await handlers.onCallback(next)
+  assert.match(next.replies[0].body, /Страница 3 из 3/)
+  assert.match(next.replies[0].body, /21\. Сессия 21/)
+
+  await handlers.onCallback(fakeCtx({ callback: 'sel:ses_11' }))
+  assert.equal(state.selectedSessionID, 'ses_11')
+})
+
 test('кнопка подтверждения берёт сессию и запрос из короткой карты', async () => {
   const client = fakeClient()
   const cards = new Map([['k1', { sessionID: 'ses_other', requestID: 'req_9' }]])
@@ -193,6 +249,25 @@ test('кнопка подтверждения берёт сессию и зап�
   const ctx = fakeCtx({ callback: 'perm:k1:once' })
   await handlers.onCallback(ctx)
   assert.deepEqual(client.calls.reply, [{ sessionID: 'ses_other', requestID: 'req_9', decision: 'once' }])
+})
+
+test('ошибка ответа OpenCode оставляет карточку подтверждения доступной для повтора', async () => {
+  const client = fakeClient({ replyPermission: async () => { throw new Error('OpenCode unavailable') } })
+  const cards = new Map([['k1', { sessionID: 'ses_other', requestID: 'req_9' }]])
+  const handlers = createHandlers({
+    client,
+    store: fakeStore({ ownerID: 1, selectedSessionID: 'ses_1' }),
+    config,
+    log: () => {},
+    files: {},
+    permissionCards: cards,
+  })
+  const ctx = fakeCtx({ callback: 'perm:k1:once' })
+
+  await handlers.onCallback(ctx)
+
+  assert.equal(cards.has('k1'), true)
+  assert.match(ctx.replies.at(-1).body, /Сервер OpenCode недоступен/)
 })
 
 test('устаревшая карточка не роняет обработчик', async () => {

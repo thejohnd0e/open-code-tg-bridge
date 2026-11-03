@@ -22,7 +22,7 @@ function fakeCtx(text) {
   return {
     replies,
     from: { id: 1 },
-    chat: { id: 1 },
+    chat: { id: 1, type: 'private' },
     message: { text },
     reply: async (body, options) => replies.push({ body, options }),
   }

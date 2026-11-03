@@ -7,7 +7,7 @@ function fakeCtx(text, userID = 1) {
   return {
     replies,
     from: { id: userID },
-    chat: { id: 1 },
+    chat: { id: 1, type: 'private' },
     message: { text },
     reply: async (body, options) => replies.push({ body, options }),
   }

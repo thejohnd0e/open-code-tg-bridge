@@ -36,7 +36,6 @@ export async function pollPermissionCards({
     }
     for (const request of requests ?? []) {
       if (seen.has(request.id)) continue
-      seen.add(request.id)
       const key = String(++keySeq.value)
       cards.set(key, { sessionID, requestID: request.id })
       try {
@@ -51,8 +50,10 @@ export async function pollPermissionCards({
             ],
           },
         })
+        seen.add(request.id)
         sent += 1
       } catch (error) {
+        cards.delete(key)
         log(`permission card failed: ${error.message}`)
       }
     }

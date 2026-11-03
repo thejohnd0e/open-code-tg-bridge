@@ -31,7 +31,7 @@ test('/new создаёт сессию с датой в заголовке', asy
   const replies = []
   await handlers.onMessage({
     from: { id: 1 },
-    chat: { id: 1 },
+    chat: { id: 1, type: 'private' },
     message: { text: '/new' },
     reply: async (body) => replies.push(body),
   })
