@@ -67,3 +67,27 @@ test('ответ, пришедший во время перезапуска, д�
   await mirror.syncBaseline({ deliver: true })
   assert.deepEqual(calls, [', мир'])
 })
+
+test('текст берётся из session.text.ended, если дельты пропущены', () => {
+  const calls = []
+  const mirror = createMirror({ client: {}, store: memoryStore({ selectedSessionID: 's' }), onMessage: (_, t) => calls.push(t) })
+  mirror.watch('s')
+  mirror.handleEvent({ type: 'session.text.ended', data: { sessionID: 's', assistantMessageID: 'm9', text: 'Готово' } })
+  assert.deepEqual(calls, ['Готово'])
+})
+
+test('ошибка отправки логируется и не рвёт поток событий', async () => {
+  const logs = []
+  const mirror = createMirror({
+    client: {},
+    store: memoryStore({ selectedSessionID: 's' }),
+    log: (line) => logs.push(line),
+    onMessage: async () => {
+      throw new Error('403 Forbidden')
+    },
+  })
+  mirror.watch('s')
+  mirror.handleEvent({ type: 'session.text.ended', data: { sessionID: 's', assistantMessageID: 'm1', text: 'Привет' } })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.ok(logs.some((line) => /403 Forbidden/.test(line)))
+})

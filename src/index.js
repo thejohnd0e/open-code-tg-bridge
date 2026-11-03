@@ -4,6 +4,7 @@ import { createClient } from './api.js'
 import { createMirror } from './events.js'
 import { createBot, splitMessage } from './bot.js'
 import { startWithRetry } from './retry.js'
+import { startServices } from './services.js'
 
 const env = process.env
 const log = (...args) => console.log(new Date().toISOString(), ...args)
@@ -44,7 +45,12 @@ const { bot, start, stop } = createBot({ token: env.TELEGRAM_BOT_TOKEN, client, 
 
 send = async (text) => {
   if (!config.ownerID) return log('no OWNER_TELEGRAM_ID, drop mirrored message')
-  await bot.api.sendMessage(config.ownerID, text)
+  try {
+    await bot.api.sendMessage(config.ownerID, text)
+  } catch (error) {
+    log(`telegram send failed: ${error.message}`)
+    throw error
+  }
 }
 
 const health = createServer((req, res) => {
@@ -55,8 +61,11 @@ const health = createServer((req, res) => {
   res.writeHead(404).end()
 }).listen(Number(env.PORT ?? 8080), () => log(`healthz on ${env.PORT ?? 8080}`))
 
-await startWithRetry(start, { log })
-mirror.start().catch((error) => log(`mirror stopped: ${error.message}`))
+startServices({
+  startMirror: () => mirror.start(),
+  startBot: () => startWithRetry(start, { log }),
+  log,
+})
 
 for (const signal of ['SIGTERM', 'SIGINT']) {
   process.on(signal, () => {

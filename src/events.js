@@ -30,7 +30,7 @@ export function createMirror({
     }
     store.set({ lastMirrored: { sessionID: watched, messageID, textLength: last?.messageID === messageID ? last.textLength + text.length : text.length } })
     store.flush().catch(() => {})
-    onMessage(watched, text)
+    Promise.resolve(onMessage(watched, text)).catch((error) => log(`mirror send failed: ${error.message}`))
   }
 
   function handleEvent(event) {
@@ -46,8 +46,9 @@ export function createMirror({
         break
       case 'session.text.ended': {
         if (!messageID) break
-        const text = buffers.get(messageID) ?? ''
+        const text = buffers.get(messageID) || event.data.text || ''
         buffers.delete(messageID)
+        log(`mirror deliver ${watched} ${messageID} ${text.length} chars`)
         deliver(messageID, text)
         break
       }
@@ -75,6 +76,7 @@ export function createMirror({
 
   function watch(sessionID) {
     if (sessionID === watched) return
+    log(`mirror watch ${sessionID}`)
     watched = sessionID
     buffers.clear()
     store.set({ selectedSessionID: sessionID, lastMirrored: null })
