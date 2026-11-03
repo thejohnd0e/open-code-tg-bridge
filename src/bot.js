@@ -8,8 +8,8 @@ const SERVER_DOWN = 'Сервер OpenCode недоступен — попроб
 const SESSION_PAGE_SIZE = 10
 const REPLY_KEYBOARD = {
   keyboard: [
-    [{ text: 'Сессии' }, { text: 'Новая' }],
-    [{ text: 'Модель' }, { text: 'Статус' }, { text: 'Помощь' }],
+    [{ text: 'Sessions' }, { text: 'New' }],
+    [{ text: 'Model' }, { text: 'Status' }, { text: 'Help' }],
   ],
   resize_keyboard: true,
   is_persistent: true,
@@ -310,11 +310,11 @@ export function createBot({ token, client, store, config, log = () => {}, pollMs
     poller.unref?.()
     try {
       await bot.api.setMyCommands([
-        { command: 'sessions', description: 'выбрать сессию любого проекта' },
-        { command: 'status', description: 'что выбрано сейчас' },
-        { command: 'new', description: 'лёгкая сессия для быстрых вопросов' },
-        { command: 'model', description: 'сменить модель сессии' },
-        { command: 'help', description: 'справка' },
+        { command: 'sessions', description: 'Choose a session from any project' },
+        { command: 'status', description: 'Show the current session' },
+        { command: 'new', description: 'Create a lightweight session' },
+        { command: 'model', description: 'Change the session model' },
+        { command: 'help', description: 'Show help' },
       ])
     } catch (error) {
       log(`setMyCommands failed: ${error.message}`)

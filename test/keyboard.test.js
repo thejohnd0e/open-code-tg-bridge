@@ -27,8 +27,8 @@ function createTestHandlers() {
 }
 
 const expectedRows = [
-  [{ text: 'Сессии' }, { text: 'Новая' }],
-  [{ text: 'Модель' }, { text: 'Статус' }, { text: 'Помощь' }],
+  [{ text: 'Sessions' }, { text: 'New' }],
+  [{ text: 'Model' }, { text: 'Status' }, { text: 'Help' }],
 ]
 
 for (const command of ['/start', '/help']) {

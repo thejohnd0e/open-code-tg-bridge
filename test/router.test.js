@@ -41,10 +41,13 @@ test('граница лимита включительно', () => {
 })
 
 test('подписи постоянной клавиатуры распознаются как команды', () => {
-  assert.deepEqual(parseCommand('Сессии'), { name: 'sessions', args: '' })
-  assert.deepEqual(parseCommand('Новая'), { name: 'new', args: '' })
-  assert.deepEqual(parseCommand('Модель'), { name: 'model', args: '' })
-  assert.deepEqual(parseCommand('Статус'), { name: 'status', args: '' })
-  assert.deepEqual(parseCommand('Помощь'), { name: 'help', args: '' })
+  assert.deepEqual(parseCommand('Sessions'), { name: 'sessions', args: '' })
+  assert.deepEqual(parseCommand('New'), { name: 'new', args: '' })
+  assert.deepEqual(parseCommand('Model'), { name: 'model', args: '' })
+  assert.deepEqual(parseCommand('Status'), { name: 'status', args: '' })
+  assert.deepEqual(parseCommand('Help'), { name: 'help', args: '' })
+  for (const oldLabel of ['Сессии', 'Новая', 'Модель', 'Статус', 'Помощь']) {
+    assert.equal(parseCommand(oldLabel), null)
+  }
   assert.equal(parseCommand('просто текст'), null)
 })

@@ -2,11 +2,11 @@ export const MAX_FILE_BYTES = 20 * 1024 * 1024
 
 const COMMANDS = new Set(['start', 'sessions', 'status', 'new', 'help', 'model'])
 const BUTTON_COMMANDS = new Map([
-  ['сессии', 'sessions'],
-  ['новая', 'new'],
-  ['модель', 'model'],
-  ['статус', 'status'],
-  ['помощь', 'help'],
+  ['sessions', 'sessions'],
+  ['new', 'new'],
+  ['model', 'model'],
+  ['status', 'status'],
+  ['help', 'help'],
 ])
 
 export function isOwner(userID, ownerID) {
