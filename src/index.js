@@ -3,6 +3,7 @@ import { createStore } from './state.js'
 import { createClient } from './api.js'
 import { createMirror } from './events.js'
 import { createBot, splitMessage } from './bot.js'
+import { startWithRetry } from './retry.js'
 
 const env = process.env
 const log = (...args) => console.log(new Date().toISOString(), ...args)
@@ -54,7 +55,7 @@ const health = createServer((req, res) => {
   res.writeHead(404).end()
 }).listen(Number(env.PORT ?? 8080), () => log(`healthz on ${env.PORT ?? 8080}`))
 
-await start()
+await startWithRetry(start, { log })
 mirror.start().catch((error) => log(`mirror stopped: ${error.message}`))
 
 for (const signal of ['SIGTERM', 'SIGINT']) {

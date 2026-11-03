@@ -229,9 +229,9 @@ export function createBot({ token, client, store, config, log = () => {}, mirror
   }
 
   async function start() {
-    bot.start({ onStart: (info) => log(`bot @${info.username} started`) })
     poller = setInterval(() => pollPermissions().catch(() => {}), pollMs)
     poller.unref?.()
+    await bot.start({ onStart: (info) => log(`bot @${info.username} started`) })
   }
 
   async function stop() {

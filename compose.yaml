@@ -1,0 +1,12 @@
+services:
+  tg-bridge:
+    build: .
+    image: tg-bridge:local
+    container_name: tg-bridge
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - tg-state:/data
+
+volumes:
+  tg-state:
