@@ -19,10 +19,12 @@ curl -u opencode:<пароль> http://127.0.0.1:28894/api/session?limit=1
 | Метод | Путь | Назначение |
 |---|---|---|
 | GET | `/api/session?limit=N` | сессии всех проектов; в элементе есть `projectID`, `location.directory`, `model`, `time.updated` |
+| GET | `/api/session?limit=N&cursor=…` | следующие страницы сессий (`cursor.next`) |
 | POST | `/api/session` | создать: `{title, location:{directory}, model:{providerID,id}, permissions?}` |
 | DELETE | `/api/session/{id}` | удалить сессию |
 | POST | `/api/session/{id}/prompt` | отправить: `{text, files?, delivery?}`; отвечает сразу очередью |
 | GET | `/api/session/{id}/message?limit=N` | история сообщений |
+| GET | `/api/session/{id}/message?limit=N&cursor=…` | следующие страницы истории |
 | GET | `/api/session/active` | карта `{sessionID: {type:"running"}}` |
 | GET | `/api/session/{id}/permission` | **ожидающие подтверждения этой сессии** |
 | POST | `/api/session/{id}/permission/{requestID}/reply` | решение: `{decision}` |
@@ -101,6 +103,9 @@ SSE: строки `data: {json}`, между ними `: heartbeat`. Форма�
 ## Мелочи
 
 - Промпт возвращает `Session.Inbox.User` — сообщение уже в очереди, ход ещё идёт.
+- Ответы списка сессий и истории сообщений содержат `{data, cursor}`. Для
+  полного прохода нужно повторять запрос с `cursor.next` до `null`; мост
+  использует это при восстановлении уведомлений после долгого отключения.
 - `opencode api GET /openapi.json` отдаёт полную схему (через CLI, с авторизацией);
   обычный `curl` к `/openapi.json` возвращает 401.
 - `opencode api` — удобный способ дёргать любой эндпоинт: `opencode api GET /api/session`.

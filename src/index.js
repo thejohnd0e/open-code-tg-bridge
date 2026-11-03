@@ -1,8 +1,9 @@
 import { createServer } from 'node:http'
 import { createStore } from './state.js'
 import { createClient } from './api.js'
-import { createMirror } from './events.js'
-import { createBot, splitMessage } from './bot.js'
+import { createCompletionTracker } from './completions.js'
+import { createCompletionDelivery } from './completion-delivery.js'
+import { createBot } from './bot.js'
 import { startWithRetry } from './retry.js'
 import { startServices } from './services.js'
 import { createTranscriber } from './whisper.js'
@@ -21,7 +22,8 @@ const store = createStore(env.STATE_FILE ?? './state.json', {
   ownerID: null,
   selectedSessionID: null,
   updateID: 0,
-  lastMirrored: null,
+  completionCursors: {},
+  completionInitialized: false,
 })
 
 const config = {
@@ -37,35 +39,21 @@ const transcriber = env.WHISPER_URL
   : null
 if (!transcriber) log('WHISPER_URL is empty: voice messages will be refused')
 
-let send = async () => {}
-const mirror = createMirror({
-  client,
-  store,
-  log,
-  onMessage: async (sessionID, text) => {
-    for (const part of splitMessage(text)) await send(part)
-  },
-})
-
 const { bot, start, stop } = createBot({
   token: env.TELEGRAM_BOT_TOKEN,
   client,
   store,
   config,
   log,
-  mirror,
   transcribe: transcriber ? (args) => transcriber.transcribe(args) : undefined,
 })
 
-send = async (text) => {
-  if (!config.ownerID) return log('no OWNER_TELEGRAM_ID, drop mirrored message')
-  try {
-    await bot.api.sendMessage(config.ownerID, text)
-  } catch (error) {
-    log(`telegram send failed: ${error.message}`)
-    throw error
-  }
-}
+const delivery = createCompletionDelivery({
+  ownerID: config.ownerID,
+  sendMessage: (ownerID, text) => bot.api.sendMessage(ownerID, text),
+  log,
+})
+const completions = createCompletionTracker({ client, store, onComplete: delivery, log })
 
 const health = createServer((req, res) => {
   if (req.url === '/healthz') {
@@ -76,7 +64,7 @@ const health = createServer((req, res) => {
 }).listen(Number(env.PORT ?? 8080), () => log(`healthz on ${env.PORT ?? 8080}`))
 
 startServices({
-  startMirror: () => mirror.start(),
+  startCompletions: () => completions.start(),
   startBot: () => startWithRetry(start, { log }),
   log,
 })
@@ -84,7 +72,7 @@ startServices({
 for (const signal of ['SIGTERM', 'SIGINT']) {
   process.on(signal, () => {
     log(`${signal} received, shutting down`)
-    mirror.stop()
+    completions.stop()
     health.close()
     stop().finally(() => process.exit(0))
   })

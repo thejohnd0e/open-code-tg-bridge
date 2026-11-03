@@ -24,15 +24,17 @@ docker logs -f tg-bridge
 |---|---|
 | `bot @ExampleBot started` | запуск бота |
 | `unauthorized user_id=N` | писал чужой аккаунт (или владелец до привязки) |
-| `mirror watch ses_…` | переключились на другую сессию |
-| `mirror deliver … N chars` | ответ ушёл в Telegram, длина N |
-| `mirror send failed: …` | Telegram не принял сообщение (состояние откатилось) |
-| `event stream error: …` | поток событий оборвался, будет переподключение |
+| `completion delivered …` | итог по завершённой сессии ушёл в Telegram |
+| `completion send failed for ses_…` | Telegram не принял итог; курсор не сдвинут, повтор будет при sync/reconnect |
+| `completion history failed for ses_…` | не удалось прочитать историю этой сессии для восстановления |
+| `completion event failed for ses_…` | обработка события завершения завершилась ошибкой |
+| `completion tracker stopped: …` | трекер неожиданно остановился; контейнер остаётся жив, проверьте ошибку рядом |
+| `completion event stream error: …` | поток событий оборвался, будет переподключение |
 | `handler failed: …` | ошибка обработчика |
 | `transcribe failed: …` | не сработало распознавание |
 
-Отправка карточек подтверждений успешно **не логируется** — видно только ошибки
-(см. `TODO.md`).
+Непосредственные промежуточные сообщения не пересылаются: успех фиксируется
+одной строкой `completion delivered` на каждую сессию/завершение.
 
 ## Обновление версии
 

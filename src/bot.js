@@ -28,7 +28,7 @@ function pickFile(message) {
   return null
 }
 
-export function createHandlers({ client, store, config, log = () => {}, files, transcribe, permissionCards = new Map(), onSelect = () => {}, now = () => new Date() }) {
+export function createHandlers({ client, store, config, log = () => {}, files, transcribe, permissionCards = new Map(), now = () => new Date() }) {
   const selected = () => store.get().selectedSessionID
   const owner = () => config.ownerID ?? store.get().ownerID
   let modelChoices = []
@@ -83,9 +83,8 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
       title: sessionTitle(now(), config.timeZone),
       model: parseModel(config.lightModel),
     })
-    store.set({ selectedSessionID: session.id, lastMirrored: null })
+    store.set({ selectedSessionID: session.id })
     await store.flush()
-    onSelect(session.id)
     await ctx.reply(`Создана лёгкая сессия «${session.title ?? session.id}» в ${config.lightDir}`)
   }
 
@@ -196,9 +195,8 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
       const parts = data.split(':')
       await ctx.answerCallbackQuery().catch(() => {})
       if (parts[0] === 'sel' && parts[1]) {
-        store.set({ selectedSessionID: parts[1], lastMirrored: null })
+        store.set({ selectedSessionID: parts[1] })
         await store.flush()
-        onSelect(parts[1])
         return ctx.reply(`Выбрана сессия ${parts[1]}`)
       }
       if (parts[0] === 'mdl') {
@@ -245,7 +243,7 @@ function telegramFiles(bot, token) {
   }
 }
 
-export function createBot({ token, client, store, config, log = () => {}, mirror, pollMs = 3000, transcribe }) {
+export function createBot({ token, client, store, config, log = () => {}, pollMs = 3000, transcribe }) {
   const bot = new Bot(token)
   const permissionCards = new Map()
   const keySeq = { value: 0 }
@@ -257,7 +255,6 @@ export function createBot({ token, client, store, config, log = () => {}, mirror
     transcribe,
     permissionCards,
     files: telegramFiles(bot, token),
-    onSelect: (id) => mirror?.watch?.(id),
   })
   const seen = new Set()
   let poller = null

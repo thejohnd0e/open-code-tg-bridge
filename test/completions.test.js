@@ -24,11 +24,14 @@ function store(initial = {}) {
   }
 }
 
-function fakeClient({ sessions = [], histories = {}, active = [] } = {}) {
+function fakeClient({ sessions = [], histories = {}, active = [], onMessages = () => {} } = {}) {
   return {
     listAllSessions: async () => sessions,
     activeSessions: async () => active,
-    listAllMessages: async (sessionID) => histories[sessionID] ?? [],
+    listAllMessages: async (sessionID) => {
+      onMessages(sessionID)
+      return histories[sessionID] ?? []
+    },
     eventStream: async () => {},
   }
 }
@@ -99,40 +102,87 @@ test('сбой или отмена выполнения не помечаютс�
   assert.deepEqual(delivered, [])
 })
 
-test('первичная синхронизация запоминает старую историю без уведомлений', async () => {
-  const delivered = []
+test('первичная синхронизация сохраняет per-session updatedAt без чтения истории', async () => {
   const state = store()
+  const historyCalls = []
   const tracker = createCompletionTracker({
     client: fakeClient({
-      sessions: [{ id: 's1', title: 'Old session', location: { directory: 'D:\\Projects\\Old' } }],
+      sessions: [
+        { id: 's1', title: 'Old 1', time: { updated: 100 } },
+        { id: 's2', title: 'Old 2', time: { updated: 200 } },
+      ],
       histories: { s1: [assistant('a-old', 'старый ответ', 10), idle('idle-old', 'succeeded', 20)] },
+      onMessages: (sessionID) => historyCalls.push(sessionID),
+    }),
+    store: state,
+    onComplete: async () => {},
+    startedAt: 300,
+  })
+  const client = tracker // tracker doesn't expose its client; histories are checked below via fake override instead
+
+  await tracker.syncHistory({ initial: true })
+
+  assert.equal(state.get().completionInitialized, true)
+  assert.deepEqual(state.get().completionCursors, {
+    s1: { completionID: null, eventID: 'history', updatedAt: 100 },
+    s2: { completionID: null, eventID: 'history', updatedAt: 200 },
+  })
+  assert.deepEqual(historyCalls, [])
+})
+
+test('неудачная reconnect-сверка не продвигает per-session cursor', async () => {
+  const state = store()
+  state.set({ completionInitialized: true, completionCursors: { s1: { completionID: 'idle-old', eventID: 'history', updatedAt: 20 } } })
+  const client = fakeClient({ sessions: [{ id: 's1', title: 'Временная ошибка', time: { updated: 30 } }] })
+  client.listAllMessages = async () => {
+    throw new Error('temporary API failure')
+  }
+  const tracker = createCompletionTracker({ client, store: state, onComplete: async () => {}, startedAt: 10 })
+
+  await tracker.syncHistory()
+
+  assert.equal(state.get().completionCursors.s1.updatedAt, 20)
+})
+
+test('reconnect reads histories only for sessions updated since their cursor', async () => {
+  const delivered = []
+  const historyCalls = []
+  const state = store({
+    completionInitialized: true,
+    completionCursors: {
+      unchanged: { completionID: 'u-idle', eventID: 'history', updatedAt: 10 },
+      changed: { completionID: 'c-idle-old', eventID: 'history', updatedAt: 20 },
+    },
+  })
+  const tracker = createCompletionTracker({
+    client: fakeClient({
+      sessions: [
+        { id: 'unchanged', title: 'Старая', time: { updated: 10 } },
+        { id: 'changed', title: 'Новая', location: { directory: 'D:\\Projects\\New' }, time: { updated: 60 } },
+      ],
+      histories: {
+        unchanged: [assistant('u1', 'не трогать', 5), idle('u-idle', 'succeeded', 10)],
+        changed: [
+          assistant('c0', 'старый итог', 5), idle('c-idle-old', 'succeeded', 10),
+          assistant('c1', 'новый итог', 30), idle('c-idle-new', 'succeeded', 40),
+        ],
+      },
+      onMessages: (sessionID) => historyCalls.push(sessionID),
     }),
     store: state,
     onComplete: async (item) => delivered.push(item),
   })
 
-  await tracker.syncHistory({ initial: true })
+  await tracker.syncHistory()
 
-  assert.deepEqual(delivered, [])
-  assert.deepEqual(state.get().completionCursors.s1, { completionID: 'idle-old', eventID: 'history' })
-})
-
-test('неудачная первичная сверка не помечает все сессии инициализированными', async () => {
-  const state = store()
-  const client = fakeClient({ sessions: [{ id: 's1', title: 'Временная ошибка' }] })
-  client.listAllMessages = async () => {
-    throw new Error('temporary API failure')
-  }
-  const tracker = createCompletionTracker({ client, store: state, onComplete: async () => {} })
-
-  await tracker.syncHistory({ initial: true })
-
-  assert.equal(state.get().completionInitialized, undefined)
+  assert.deepEqual(historyCalls, ['changed'])
+  assert.deepEqual(delivered.map((item) => item.text), ['новый итог'])
+  assert.equal(state.get().completionCursors.changed.updatedAt, 60)
 })
 
 test('повторное завершение после сохранённого курсора доставляет только новый ответ', async () => {
   const delivered = []
-  const state = store({ completionCursors: { s1: { completionID: 'idle-1', eventID: 'history' } } })
+  const state = store({ completionInitialized: true, completionCursors: { s1: { completionID: 'idle-1', eventID: 'history', updatedAt: 20 } } })
   const client = fakeClient({
     sessions: [{ id: 's1', title: 'Рабочая сессия', location: { directory: 'D:\\Projects\\Demo' } }],
     histories: {
@@ -151,6 +201,37 @@ test('повторное завершение после сохранённог�
   assert.deepEqual(delivered.map((item) => [item.completionID, item.text]), [['idle-2', 'второй'], ['idle-3', 'третий']])
 })
 
+test('ошибка второго итога не продвигает updatedAt мимо него', async () => {
+  const delivered = []
+  const state = store({ completionInitialized: true, completionCursors: { s1: { completionID: 'idle-0', eventID: 'history', updatedAt: 10 } } })
+  const client = fakeClient({
+    sessions: [{ id: 's1', title: 'Работа', location: { directory: 'D:\\Projects\\Demo' }, time: { updated: 60 } }],
+    histories: {
+      s1: [
+        assistant('a0', 'старый', 5), idle('idle-0', 'succeeded', 10),
+        assistant('a1', 'первый новый', 20), idle('idle-1', 'succeeded', 30),
+        assistant('a2', 'второй новый', 40), idle('idle-2', 'succeeded', 50),
+      ],
+    },
+  })
+  let failSecond = true
+  const tracker = createCompletionTracker({
+    client,
+    store: state,
+    onComplete: async (item) => {
+      delivered.push(item.completionID)
+      if (item.completionID === 'idle-2' && failSecond) throw new Error('Telegram unavailable')
+    },
+  })
+
+  await tracker.syncHistory()
+  failSecond = false
+  await tracker.syncHistory()
+
+  assert.deepEqual(delivered, ['idle-1', 'idle-2', 'idle-2'])
+  assert.equal(state.get().completionCursors.s1.completionID, 'idle-2')
+})
+
 test('успешное выполнение без ответа всё равно даёт короткое completion событие', async () => {
   const delivered = []
   const tracker = createCompletionTracker({
@@ -158,7 +239,7 @@ test('успешное выполнение без ответа всё равн�
       sessions: [{ id: 's1', title: 'Пустой ответ', location: { directory: 'D:\\Projects\\Demo' } }],
       histories: { s1: [idle('idle-1', 'succeeded', 20)] },
     }),
-    store: store({ completionCursors: { s1: { completionID: 'idle-before', eventID: 'history' } } }),
+    store: store({ completionCursors: { s1: { completionID: 'idle-before', eventID: 'history', updatedAt: 10 } } }),
     onComplete: async (item) => delivered.push(item),
   })
 
@@ -173,7 +254,7 @@ test('completion event queued during initial sync is sent once after baseline', 
   const delivered = []
   const histories = { s1: [assistant('a0', 'до запуска', 5), idle('idle-0', 'succeeded', 8)] }
   const client = fakeClient({
-    sessions: [{ id: 's1', title: 'Новая работа', location: { directory: 'D:\\Projects\\Demo' } }],
+    sessions: [{ id: 's1', title: 'Новая работа', location: { directory: 'D:\\Projects\\Demo' }, time: { updated: 8 } }],
     histories,
   })
   const state = store()

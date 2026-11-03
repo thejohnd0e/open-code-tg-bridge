@@ -35,8 +35,8 @@ function completionRecords(messages) {
 }
 
 function normalizeCursor(cursor) {
-  if (typeof cursor === 'string') return { completionID: cursor, eventID: 'history' }
-  return cursor ?? { completionID: null, eventID: null }
+  if (typeof cursor === 'string') return { completionID: cursor, eventID: 'history', updatedAt: 0 }
+  return cursor ?? { completionID: null, eventID: null, updatedAt: null }
 }
 
 function projectName(session) {
@@ -59,7 +59,10 @@ export function createCompletionTracker({
 
   function saveCursors(cursors) {
     store.set({ completionCursors: cursors })
-    return store.flush().catch((error) => log(`completion state save failed: ${error.message}`))
+    return store.flush().then(() => true).catch((error) => {
+      log(`completion state save failed: ${error.message}`)
+      return false
+    })
   }
 
   async function loadSessions() {
@@ -72,10 +75,7 @@ export function createCompletionTracker({
   async function sendRecord(session, record, eventID = 'history') {
     const cursors = { ...(store.get().completionCursors ?? {}) }
     const previous = normalizeCursor(cursors[session.id])
-    if (previous.completionID === record.id) {
-      if (previous.eventID !== null && previous.eventID !== undefined) return false
-      if (eventID === 'history') return false
-    }
+    if (previous.completionID === record.id) return 'duplicate'
 
     try {
       await onComplete({
@@ -87,46 +87,40 @@ export function createCompletionTracker({
       })
     } catch (error) {
       log(`completion send failed for ${session.id}: ${error.message}`)
-      return false
+      return 'failed'
     }
 
-    cursors[session.id] = { completionID: record.id, eventID }
-    await saveCursors(cursors)
-    return true
+    cursors[session.id] = {
+      ...previous,
+      completionID: record.id,
+      eventID,
+    }
+    return (await saveCursors(cursors)) ? 'sent' : 'failed'
   }
 
-  async function processSession(session, { initial = false, event = null } = {}) {
+  async function processSession(session, { event = null, since } = {}) {
     const messages = await client.listAllMessages(session.id)
     const records = completionRecords(messages)
     const state = store.get()
     const cursors = { ...(state.completionCursors ?? {}) }
     const hasCursor = Object.hasOwn(cursors, session.id)
     const cursor = normalizeCursor(cursors[session.id])
-
-    if (!hasCursor && initial) {
-      const oldRecords = records.filter((record) => record.created < startedAt)
-      const currentRecords = records.filter((record) => record.created >= startedAt)
-      const latestOld = oldRecords.at(-1)
-      cursors[session.id] = { completionID: latestOld?.id ?? null, eventID: 'history' }
-      await saveCursors(cursors)
-      for (const record of currentRecords) await sendRecord(session, record)
-      return
-    }
-
     let cursorIndex = cursor.completionID
       ? records.findIndex((record) => record.id === cursor.completionID)
       : -1
-    let pending = cursorIndex >= 0 ? records.slice(cursorIndex + 1) : records
+    const cutoff = since ?? cursor.updatedAt ?? session.time?.created ?? startedAt
+    let pending = cursorIndex >= 0
+      ? records.slice(cursorIndex + 1)
+      : records.filter((record) => record.created > cutoff)
 
-    if (!hasCursor && !initial) {
-      // A session created while the bridge was offline has no cursor yet;
-      // its successful turns are new work, not an initial-history baseline.
-      pending = records
-    }
-
-    if (event && pending.length === 0) {
+    if (event && !hasCursor) {
+      // A success event proves this is new work. If several completions arrived
+      // before the event queue drained, preserve all records newer than the
+      // per-session baseline; otherwise use the latest record as a fallback.
+      if (!pending.length && records.length) pending = [records.at(-1)]
+    } else if (event && pending.length === 0) {
       const latest = records.at(-1)
-      if (latest && latest.id === cursor.completionID && cursor.eventID === 'history' && event.created >= startedAt) {
+      if (latest && latest.id !== cursor.completionID && event.created >= startedAt) {
         pending = [latest]
       }
     }
@@ -134,13 +128,19 @@ export function createCompletionTracker({
     for (let index = 0; index < pending.length; index += 1) {
       const record = pending[index]
       const eventID = event && index === pending.length - 1 ? event.id : 'history'
-      await sendRecord(session, record, eventID)
+      const result = await sendRecord(session, record, eventID)
+      if (result === 'failed') return false
     }
 
-    if (!hasCursor && !pending.length) {
-      cursors[session.id] = { completionID: null, eventID: 'history' }
-      await saveCursors(cursors)
+    const after = { ...(store.get().completionCursors ?? {}) }
+    const updated = normalizeCursor(after[session.id])
+    const latestMessageAt = messages.reduce((latest, message) => Math.max(latest, message.time?.created ?? 0), 0)
+    after[session.id] = {
+      ...updated,
+      eventID: updated.eventID ?? 'history',
+      updatedAt: Math.max(updated.updatedAt ?? 0, session.time?.updated ?? 0, latestMessageAt),
     }
+    return saveCursors(after)
   }
 
   async function syncHistory({ initial = false } = {}) {
@@ -152,19 +152,38 @@ export function createCompletionTracker({
       return
     }
 
+    const state = store.get()
+    if (initial || !state.completionInitialized) {
+      const cursors = { ...(state.completionCursors ?? {}) }
+      for (const session of list) {
+        if (Object.hasOwn(cursors, session.id)) continue
+        cursors[session.id] = {
+          completionID: null,
+          eventID: 'history',
+          updatedAt: session.time?.updated ?? startedAt,
+        }
+      }
+      if (!(await saveCursors(cursors))) return
+      store.set({ completionInitialized: true })
+      await store.flush().catch((error) => log(`completion state save failed: ${error.message}`))
+      return
+    }
+
     let complete = true
     for (const session of list) {
+      const cursor = store.get().completionCursors?.[session.id]
+      const updatedAt = typeof cursor === 'string' ? 0 : cursor?.updatedAt
+      const sessionUpdated = session.time?.updated
+      if (cursor && Number.isFinite(updatedAt) && Number.isFinite(sessionUpdated) && sessionUpdated <= updatedAt) continue
       try {
-        await processSession(session, { initial })
+        const ok = await processSession(session, { since: updatedAt ?? session.time?.created ?? startedAt })
+        if (!ok) complete = false
       } catch (error) {
         complete = false
         log(`completion history failed for ${session.id}: ${error.message}`)
       }
     }
-    if (initial && complete) {
-      store.set({ completionInitialized: true })
-      await store.flush().catch((error) => log(`completion state save failed: ${error.message}`))
-    }
+    if (!complete) log('completion history sync incomplete; unchanged cursors will be retried')
   }
 
   function handleEvent(event) {
