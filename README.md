@@ -1,6 +1,9 @@
 # OpenCode Telegram Bridge
 
 [![CI](https://github.com/thejohnd0e/open-code-tg-bridge/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/thejohnd0e/open-code-tg-bridge/actions/workflows/ci.yml)
+[![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![Docker](https://img.shields.io/badge/Docker-supported-2496ED?logo=docker&logoColor=white)](docs/deploy.md)
+[![grammY](https://img.shields.io/badge/grammY-bot_framework-009DFF?logo=telegram&logoColor=white)](https://grammy.dev/)
 
 A private Telegram client for an OpenCode server. The authorized owner can select
 sessions across projects, send text and attachments, receive completion summaries,
