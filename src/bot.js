@@ -5,6 +5,15 @@ import { pollPermissionCards } from './permissions.js'
 
 const NO_SESSION = 'Сначала выберите сессию: /sessions'
 const SERVER_DOWN = 'Сервер OpenCode недоступен — попробуйте позже.'
+const REPLY_KEYBOARD = {
+  keyboard: [
+    [{ text: 'Сессии' }, { text: 'Новая' }],
+    [{ text: 'Модель' }, { text: 'Статус' }, { text: 'Помощь' }],
+  ],
+  resize_keyboard: true,
+  is_persistent: true,
+  one_time_keyboard: false,
+}
 
 function parseModel(model) {
   if (!model) return undefined
@@ -57,7 +66,10 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
 
   async function onStart(ctx) {
     const id = selected()
-    await ctx.reply(id ? `На связи. Текущая сессия: ${id}` : 'На связи. Сессию ещё не выбрали: /sessions')
+    await ctx.reply(
+      id ? `На связи. Текущая сессия: ${id}` : 'На связи. Сессию ещё не выбрали: /sessions',
+      { reply_markup: REPLY_KEYBOARD },
+    )
   }
 
   async function onSessions(ctx) {
@@ -103,6 +115,7 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
         '',
         'Файлы больше 20 МБ Telegram боту не отдаёт.',
       ].join('\n'),
+      { reply_markup: REPLY_KEYBOARD },
     )
   }
 
