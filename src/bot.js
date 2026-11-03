@@ -94,7 +94,13 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
         '/sessions — выбрать сессию любого проекта',
         '/status — что выбрано сейчас',
         '/new — лёгкая сессия для быстрых вопросов',
-        'Просто текст, фото или файл — уйдёт в выбранную сессию.',
+        '/help — эта справка',
+        '',
+        'Текст, фото, документ или голосовое — уйдёт в выбранную сессию.',
+        'Ответы приходят сюда; длинные делятся на части.',
+        'Запросы подтверждения приходят карточкой с кнопками «Разрешить / Всегда / Запретить».',
+        '',
+        'Файлы больше 20 МБ Telegram боту не отдаёт.',
       ].join('\n'),
     )
   }
@@ -247,6 +253,16 @@ export function createBot({ token, client, store, config, log = () => {}, mirror
   async function start() {
     poller = setInterval(() => pollPermissions().catch(() => {}), pollMs)
     poller.unref?.()
+    try {
+      await bot.api.setMyCommands([
+        { command: 'sessions', description: 'выбрать сессию любого проекта' },
+        { command: 'status', description: 'что выбрано сейчас' },
+        { command: 'new', description: 'лёгкая сессия для быстрых вопросов' },
+        { command: 'help', description: 'справка' },
+      ])
+    } catch (error) {
+      log(`setMyCommands failed: ${error.message}`)
+    }
     await bot.start({ onStart: (info) => log(`bot @${info.username} started`) })
   }
 
