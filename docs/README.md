@@ -28,23 +28,24 @@
   опубликован так же на `192.0.2.1:28895`.
 - **Доступ:** только `OWNER_TELEGRAM_ID`; остальным — молчание и строка в логе.
 - **Состояние:** JSON на docker-томе `tg-state` (выбранная сессия, `update_id`, курсоры завершений по сессиям).
-- **Тесты:** `npm test` (`node --test`), 86 проверок.
+- **Tests:** `npm test` (`node --test`), 91 tests.
 
-## Команды бота
+## Bot commands
 
 ```
-/sessions — выбрать сессию любого проекта, список постраничный (10 на странице)
-/status   — что выбрано сейчас
-/new      — лёгкая сессия в C:/Example/Project на gpt-6-luna
-/model    — сменить модель выбранной сессии (список недавних)
-/help     — справка
+/sessions — choose a session from any project (10 per page)
+/status   — show the current session
+/new      — create a lightweight session in C:/Example/Project on gpt-6-luna
+/model    — change the selected session's model
+/help     — show help
 ```
 
-После `/start` или `/help` Telegram показывает постоянную клавиатуру с теми же
-действиями: **Сессии**, **Новая**, **Модель**, **Статус**, **Помощь**. При установке
-клавиатура также отправляется владельцу отдельным сообщением.
+After `/start` or `/help`, Telegram shows a persistent keyboard with **Sessions**,
+**New**, **Model**, **Status**, and **Help**. Slash command names stay unchanged.
 
-Всё остальное — сообщение в выбранную сессию. После успешного завершения агент
-присылает в Telegram одно итоговое сообщение с названием проекта и сессии;
-промежуточные реплики не пересылаются. Длинные итоги делятся на части по 4096 символов.
+Other text, photos, documents, and voice messages are sent to the selected session.
+OpenCode-authored replies, project names, and session titles are passed through
+unchanged. After a successful run, the bot sends one final notification with the
+project and session names; progress messages are not forwarded. Long replies are
+split into parts of up to 4096 characters.
 

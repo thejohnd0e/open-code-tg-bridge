@@ -53,13 +53,13 @@ ssh root@192.0.2.1 'tar -xzf /root/tgbridge.tgz -C /root/TgBridge && cd /root/Tg
 `--force-recreate` нужен, если менялся `.env`: переменные читаются только при
 создании контейнера.
 
-## Клавиатура и список сессий
+## Keyboard and session list
 
-Reply Keyboard появляется после `/start` или `/help`; при первоначальной
-установке меню уже отправляется владельцу отдельным сообщением. `/sessions`
-показывает по 10 сессий: `‹ Назад` / `Далее ›` переключают страницы,
-`/sessions N` открывает страницу N. Бот обслуживает только личный чат владельца;
-его команды в группах также игнорируются.
+The persistent keyboard appears after `/start` or `/help`. `/sessions` shows 10
+sessions per page: use `‹ Previous` / `Next ›` to navigate, or `/sessions N` to
+open page N directly. The bot only handles the owner's private chat; owner
+commands in groups are ignored too. All bot-authored interface text is English;
+OpenCode-authored response content is passed through unchanged.
 
 ## Перезапуск
 

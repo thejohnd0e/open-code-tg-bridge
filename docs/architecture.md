@@ -55,10 +55,10 @@
 `data:<mime>;base64,…`, `source: inline`). Ответ API возвращается сразу и содержит
 поставленный в очередь элемент inbox — бот не ждёт окончания хода.
 
-Фильтр проверяет и Telegram user ID, и то, что чат — личный с тем же chat ID.
-Совпадения user ID недостаточно: сообщения владельца в группах тоже игнорируются.
-`/sessions` загружает сессии постранично через API cursors и показывает по 10 за
-раз; inline-кнопки `‹ Назад` / `Далее ›` позволяют добраться до всех проектов.
+The filter checks both the Telegram user ID and that the chat is private with the same chat ID.
+Matching user ID alone is not enough: owner messages in groups are ignored too.
+`/sessions` loads sessions with API cursors and shows 10 per page; inline buttons
+`‹ Previous` / `Next ›` provide access to every project.
 
 **Завершение агента.** Бот держит глобальную SSE-подписку `GET /api/event` и
 слушает `session.execution.succeeded` для любой сессии. Промежуточные
