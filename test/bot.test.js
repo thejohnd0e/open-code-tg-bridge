@@ -192,7 +192,7 @@ test('кнопка подтверждения берёт сессию и зап�
   })
   const ctx = fakeCtx({ callback: 'perm:k1:once' })
   await handlers.onCallback(ctx)
-  assert.deepEqual(client.calls.reply, [{ sessionID: 'ses_other', requestID: 'req_9', reply: 'once' }])
+  assert.deepEqual(client.calls.reply, [{ sessionID: 'ses_other', requestID: 'req_9', decision: 'once' }])
 })
 
 test('устаревшая карточка не роняет обработчик', async () => {
@@ -224,3 +224,4 @@ test('повторный update_id не выполняет команду два
   await handlers.onMessage(fakeCtx({ text: 'привет', updateID: 77 }))
   assert.equal(client.calls.prompt.length, 1)
 })
+

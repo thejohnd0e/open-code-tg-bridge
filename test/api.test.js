@@ -60,9 +60,9 @@ test('replyPermission шлёт решение reject', async () => {
     },
     async (url) => {
       const client = createClient({ url, password: 'x' })
-      await client.replyPermission({ sessionID: 'ses_1', requestID: 'req_1', reply: 'reject' })
+      await client.replyPermission({ sessionID: 'ses_1', requestID: 'req_1', decision: 'reject' })
       assert.equal(seen.url, '/api/session/ses_1/permission/req_1/reply')
-      assert.deepEqual(seen.body, { reply: 'reject' })
+      assert.deepEqual(seen.body, { decision: 'reject' })
     },
   )
 })
@@ -77,8 +77,7 @@ test('401 превращается в понятную ошибку', async () =
   )
 })
 
-test('eventStream отдаёт события и пропускает heartbeat', async () => {
-  await withServer(
+test('eventStream отдаёт события и пропускает heartbeat', async () => {  await withServer(
     (req, res) => {
       res.writeHead(200, { 'content-type': 'text/event-stream' })
       res.write(': heartbeat\n\ndata: {"id":"e1","type":"session.text.delta","data":{"delta":"a"}}\n\n')
@@ -94,3 +93,30 @@ test('eventStream отдаёт события и пропускает heartbeat'
     },
   )
 })
+
+test('activeSessions возвращает список id из карты', async () => {
+  await withServer(
+    (req, res) => json(res, { data: { ses_a: { type: 'running' }, ses_b: { type: 'running' } } }),
+    async (url) => {
+      const client = createClient({ url, password: 'x' })
+      assert.deepEqual(await client.activeSessions(), ['ses_a', 'ses_b'])
+    },
+  )
+})
+
+test('sessionPermissions спрашивает список подтверждений конкретной сессии', async () => {
+  let seen
+  await withServer(
+    (req, res) => {
+      seen = req.url
+      json(res, { data: [{ id: 'per_1', sessionID: 'ses_a', action: 'shell', resources: ['whoami'] }] })
+    },
+    async (url) => {
+      const client = createClient({ url, password: 'x' })
+      const list = await client.sessionPermissions('ses_a')
+      assert.equal(seen, '/api/session/ses_a/permission')
+      assert.equal(list[0].id, 'per_1')
+    },
+  )
+})
+

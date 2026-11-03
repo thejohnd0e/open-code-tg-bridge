@@ -54,8 +54,15 @@ export function createClient({ url, password, fetchImpl = fetch, timeoutMs = DEF
 
     pendingPermissions: () => call('GET', '/api/permission/request'),
 
-    replyPermission: ({ sessionID, requestID, reply }) =>
-      call('POST', `/api/session/${sessionID}/permission/${requestID}/reply`, { reply }),
+    activeSessions: async () => {
+      const map = await call('GET', '/api/session/active')
+      return Object.keys(map ?? {})
+    },
+
+    sessionPermissions: (sessionID) => call('GET', `/api/session/${sessionID}/permission`),
+
+    replyPermission: ({ sessionID, requestID, decision }) =>
+      call('POST', `/api/session/${sessionID}/permission/${requestID}/reply`, { decision }),
 
     async eventStream({ signal, onEvent }) {
       const res = await fetchImpl(`${base}/api/event`, {

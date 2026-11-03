@@ -1,6 +1,7 @@
 import { Bot } from 'grammy'
 import { isOwner, parseCommand, checkFileSize } from './router.js'
-import { formatSessionList, sessionChoiceRows, splitMessage, permissionCardText } from './format.js'
+import { formatSessionList, sessionChoiceRows, splitMessage } from './format.js'
+import { pollPermissionCards } from './permissions.js'
 
 const NO_SESSION = 'Сначала выберите сессию: /sessions'
 const SERVER_DOWN = 'Сервер OpenCode недоступен — попробуйте позже.'
@@ -184,7 +185,7 @@ export function createHandlers({ client, store, config, log = () => {}, files, t
         }
         const decision = parts[2]
         permissionCards.delete(parts[1])
-        await client.replyPermission({ sessionID: card.sessionID, requestID: card.requestID, reply: decision })
+        await client.replyPermission({ sessionID: card.sessionID, requestID: card.requestID, decision })
         await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }).catch(() => {})
         return ctx.reply(`Решение по ${card.requestID}: ${decision}`)
       }
@@ -214,7 +215,7 @@ function telegramFiles(bot, token) {
 export function createBot({ token, client, store, config, log = () => {}, mirror, pollMs = 3000, transcribe }) {
   const bot = new Bot(token)
   const permissionCards = new Map()
-  let cardSeq = 0
+  const keySeq = { value: 0 }
   const handlers = createHandlers({
     client,
     store,
@@ -232,44 +233,15 @@ export function createBot({ token, client, store, config, log = () => {}, mirror
   bot.on('callback_query', (ctx) => handlers.onCallback(ctx))
 
   async function pollPermissions() {
-    const ownerID = config.ownerID
-    if (!ownerID) return
-    let pending
-    try {
-      pending = await client.pendingPermissions()
-    } catch (error) {
-      log(`permission poll failed: ${error.message}`)
-      return
-    }
-    const fresh = (pending ?? []).filter((request) => !seen.has(request.id))
-    if (!fresh.length) return
-    let byId = new Map()
-    try {
-      const sessions = await client.listSessions({ limit: 50 })
-      byId = new Map((sessions ?? []).map((session) => [session.id, session]))
-    } catch (error) {
-      log(`permission session lookup failed: ${error.message}`)
-    }
-    for (const request of fresh) {
-      seen.add(request.id)
-      const key = String(++cardSeq)
-      permissionCards.set(key, { sessionID: request.sessionID, requestID: request.id })
-      try {
-        await bot.api.sendMessage(ownerID, permissionCardText(request, byId.get(request.sessionID)), {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: 'Разрешить', callback_data: `perm:${key}:once` },
-                { text: 'Всегда', callback_data: `perm:${key}:always` },
-                { text: 'Запретить', callback_data: `perm:${key}:reject` },
-              ],
-            ],
-          },
-        })
-      } catch (error) {
-        log(`permission card failed: ${error.message}`)
-      }
-    }
+    return pollPermissionCards({
+      client,
+      ownerID: config.ownerID,
+      cards: permissionCards,
+      seen,
+      keySeq,
+      log,
+      sendMessage: (chatID, text, options) => bot.api.sendMessage(chatID, text, options),
+    })
   }
 
   async function start() {
@@ -287,3 +259,4 @@ export function createBot({ token, client, store, config, log = () => {}, mirror
 }
 
 export { splitMessage }
+
