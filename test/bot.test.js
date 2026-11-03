@@ -98,6 +98,26 @@ test('фото скачивается и уходит файлом с mime', asy
   assert.equal(client.calls.prompt[0].text, 'смотри')
 })
 
+test('голосовое сообщение получает понятный отказ, а не тишину', async () => {
+  const client = fakeClient()
+  const handlers = createHandlers({ client, store: fakeStore({ ownerID: 1, selectedSessionID: 'ses_1' }), config, log: () => {}, files: {} })
+  const ctx = fakeCtx({})
+  ctx.message.voice = { file_id: 'v1', duration: 3, file_size: 20000 }
+  await handlers.onMessage(ctx)
+  assert.equal(client.calls.prompt.length, 0)
+  assert.match(ctx.replies[0].body, /[Гг]олосов/)
+})
+
+test('стикер и видео тоже не проваливаются в тишину', async () => {
+  const client = fakeClient()
+  const handlers = createHandlers({ client, store: fakeStore({ ownerID: 1, selectedSessionID: 'ses_1' }), config, log: () => {}, files: {} })
+  const ctx = fakeCtx({})
+  ctx.message.video_note = { file_id: 'v2', duration: 4 }
+  await handlers.onMessage(ctx)
+  assert.equal(client.calls.prompt.length, 0)
+  assert.equal(ctx.replies.length, 1)
+})
+
 test('кнопка reject шлёт replyPermission reject', async () => {
   const client = fakeClient()
   const handlers = createHandlers({ client, store: fakeStore({ ownerID: 1, selectedSessionID: 'ses_1' }), config, log: () => {}, files: {} })

@@ -126,8 +126,10 @@ export function createHandlers({ client, store, config, log = () => {}, files, o
 
   async function onMessage(ctx) {
     await guarded(ctx, async () => {
-      if (ctx.message?.photo || ctx.message?.document) return onFile(ctx)
-      if (typeof ctx.message?.text === 'string') return onText(ctx)
+      const message = ctx.message ?? {}
+      if (message.photo || message.document) return onFile(ctx)
+      if (typeof message.text === 'string') return onText(ctx)
+      return ctx.reply('Голосовые, видео и стикеры пока не поддерживаю — напишите текстом или пришлите файлом.')
     })
   }
 
