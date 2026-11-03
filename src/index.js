@@ -5,6 +5,7 @@ import { createMirror } from './events.js'
 import { createBot, splitMessage } from './bot.js'
 import { startWithRetry } from './retry.js'
 import { startServices } from './services.js'
+import { createTranscriber } from './whisper.js'
 
 const env = process.env
 const log = (...args) => console.log(new Date().toISOString(), ...args)
@@ -31,6 +32,11 @@ const config = {
 
 const client = createClient({ url: env.OPENCODE_URL, password: env.OPENCODE_TOKEN })
 
+const transcriber = env.WHISPER_URL
+  ? createTranscriber({ url: env.WHISPER_URL, token: env.WHISPER_TOKEN ?? '' })
+  : null
+if (!transcriber) log('WHISPER_URL is empty: voice messages will be refused')
+
 let send = async () => {}
 const mirror = createMirror({
   client,
@@ -41,7 +47,15 @@ const mirror = createMirror({
   },
 })
 
-const { bot, start, stop } = createBot({ token: env.TELEGRAM_BOT_TOKEN, client, store, config, log, mirror })
+const { bot, start, stop } = createBot({
+  token: env.TELEGRAM_BOT_TOKEN,
+  client,
+  store,
+  config,
+  log,
+  mirror,
+  transcribe: transcriber ? (args) => transcriber.transcribe(args) : undefined,
+})
 
 send = async (text) => {
   if (!config.ownerID) return log('no OWNER_TELEGRAM_ID, drop mirrored message')

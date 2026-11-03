@@ -98,14 +98,65 @@ test('фото скачивается и уходит файлом с mime', asy
   assert.equal(client.calls.prompt[0].text, 'смотри')
 })
 
-test('голосовое сообщение получает понятный отказ, а не тишину', async () => {
+test('голосовое распознаётся и уходит в сессию текстом с пометкой', async () => {
   const client = fakeClient()
-  const handlers = createHandlers({ client, store: fakeStore({ ownerID: 1, selectedSessionID: 'ses_1' }), config, log: () => {}, files: {} })
+  const files = { download: async () => ({ name: 'voice.ogg', mime: 'audio/ogg', dataBase64: 'AAA', size: 2048 }) }
+  const calls = []
+  const transcribe = async (args) => {
+    calls.push(args)
+    return 'привет мир'
+  }
+  const handlers = createHandlers({
+    client,
+    store: fakeStore({ ownerID: 1, selectedSessionID: 'ses_1' }),
+    config,
+    log: () => {},
+    files,
+    transcribe,
+  })
   const ctx = fakeCtx({})
-  ctx.message.voice = { file_id: 'v1', duration: 3, file_size: 20000 }
+  ctx.message.voice = { file_id: 'v1', file_size: 2048, duration: 2 }
+  await handlers.onMessage(ctx)
+  assert.equal(calls[0].mime, 'audio/ogg')
+  assert.deepEqual(client.calls.prompt, [{ sessionID: 'ses_1', text: 'голосовое: привет мир' }])
+})
+
+test('сбой распознавания — понятная ошибка, сессия не тронута', async () => {
+  const client = fakeClient()
+  const files = { download: async () => ({ name: 'voice.ogg', mime: 'audio/ogg', dataBase64: 'AAA', size: 2048 }) }
+  const handlers = createHandlers({
+    client,
+    store: fakeStore({ ownerID: 1, selectedSessionID: 'ses_1' }),
+    config,
+    log: () => {},
+    files,
+    transcribe: async () => {
+      throw new Error('whisper 500')
+    },
+  })
+  const ctx = fakeCtx({})
+  ctx.message.voice = { file_id: 'v1', file_size: 2048, duration: 2 }
   await handlers.onMessage(ctx)
   assert.equal(client.calls.prompt.length, 0)
-  assert.match(ctx.replies[0].body, /[Гг]олосов/)
+  assert.match(ctx.replies[0].body, /[Нн]е разобрал|распозна/)
+})
+
+test('пустое распознавание не уходит в сессию', async () => {
+  const client = fakeClient()
+  const files = { download: async () => ({ name: 'voice.ogg', mime: 'audio/ogg', dataBase64: 'AAA', size: 2048 }) }
+  const handlers = createHandlers({
+    client,
+    store: fakeStore({ ownerID: 1, selectedSessionID: 'ses_1' }),
+    config,
+    log: () => {},
+    files,
+    transcribe: async () => '',
+  })
+  const ctx = fakeCtx({})
+  ctx.message.voice = { file_id: 'v1', file_size: 2048, duration: 2 }
+  await handlers.onMessage(ctx)
+  assert.equal(client.calls.prompt.length, 0)
+  assert.equal(ctx.replies.length, 1)
 })
 
 test('стикер и видео тоже не проваливаются в тишину', async () => {

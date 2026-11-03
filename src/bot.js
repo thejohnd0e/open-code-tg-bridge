@@ -27,7 +27,7 @@ function pickFile(message) {
   return null
 }
 
-export function createHandlers({ client, store, config, log = () => {}, files, onSelect = () => {} }) {
+export function createHandlers({ client, store, config, log = () => {}, files, transcribe, onSelect = () => {} }) {
   const selected = () => store.get().selectedSessionID
   const owner = () => config.ownerID ?? store.get().ownerID
 
@@ -124,12 +124,35 @@ export function createHandlers({ client, store, config, log = () => {}, files, o
     await ctx.reply(`↗ ${file.name} (${Math.round(file.size / 1024)} КБ) отправлен`)
   }
 
+  async function onVoice(ctx) {
+    const id = selected()
+    if (!id) return ctx.reply(NO_SESSION)
+    const message = ctx.message
+    const ref = message.voice
+      ? { fileID: message.voice.file_id, size: message.voice.file_size ?? 0, name: 'voice.ogg', mime: message.voice.mime_type ?? 'audio/ogg' }
+      : { fileID: message.audio.file_id, size: message.audio.file_size ?? 0, name: message.audio.file_name ?? 'audio.mp3', mime: message.audio.mime_type ?? 'audio/mpeg' }
+    const limit = checkFileSize(ref.size)
+    if (!limit.ok) return ctx.reply(limit.reason)
+    const file = await files.download(ref)
+    let text
+    try {
+      text = await transcribe({ dataBase64: file.dataBase64, mime: ref.mime, name: ref.name })
+    } catch (error) {
+      log(`transcribe failed: ${error.message}`)
+      return ctx.reply('Не разобрал голосовое: сервис распознавания недоступен. Напишите текстом или попробуйте позже.')
+    }
+    if (!text) return ctx.reply('Не разобрал речь в голосовом — попробуйте ещё раз или напишите текстом.')
+    await client.prompt({ sessionID: id, text: `голосовое: ${text}` })
+    await ctx.reply(`↗ «${text.slice(0, 300)}»`)
+  }
+
   async function onMessage(ctx) {
     await guarded(ctx, async () => {
       const message = ctx.message ?? {}
+      if (message.voice || message.audio) return onVoice(ctx)
       if (message.photo || message.document) return onFile(ctx)
       if (typeof message.text === 'string') return onText(ctx)
-      return ctx.reply('Голосовые, видео и стикеры пока не поддерживаю — напишите текстом или пришлите файлом.')
+      return ctx.reply('Видео и стикеры пока не поддерживаю — напишите текстом, пришлите файлом или голосовым.')
     })
   }
 
@@ -175,13 +198,14 @@ function telegramFiles(bot, token) {
   }
 }
 
-export function createBot({ token, client, store, config, log = () => {}, mirror, pollMs = 3000 }) {
+export function createBot({ token, client, store, config, log = () => {}, mirror, pollMs = 3000, transcribe }) {
   const bot = new Bot(token)
   const handlers = createHandlers({
     client,
     store,
     config,
     log,
+    transcribe,
     files: telegramFiles(bot, token),
     onSelect: (id) => mirror?.watch?.(id),
   })
