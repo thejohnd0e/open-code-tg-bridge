@@ -10,6 +10,8 @@ OpenCode Telegram Bridge connects your phone to a running OpenCode server so you
 can switch between projects, send prompts or screenshots, approve tool permissions,
 and get notified as soon as an agent finishes its work.
 
+![Telegram bot command menu and keyboard](https://raw.githubusercontent.com/thejohnd0e/open-code-tg-bridge/master/docs/telegram-screenshot.jpg)
+
 ## Key Features
 
 - **Work across all projects and sessions** — browse every session on your OpenCode
