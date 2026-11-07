@@ -76,7 +76,7 @@ SSE uses `data: {json}` lines separated by `: heartbeat` lines. Example:
 ```json
 { "id": "evt_…", "created": 1700000000000,
   "type": "session.text.delta",
-  "location": { "directory": "D:\\…" },
+  "location": { "directory": "C:/Example/Project" },
   "data": { "sessionID": "ses_…", "assistantMessageID": "msg_…", "ordinal": 0, "delta": "Hello" } }
 ```
 

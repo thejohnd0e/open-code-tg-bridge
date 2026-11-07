@@ -72,7 +72,7 @@ test('401 превращается в понятную ошибку', async () =
     (req, res) => json(res, {}, 401),
     async (url) => {
       const client = createClient({ url, password: 'x' })
-      await assert.rejects(() => client.listSessions(), /авторизац/)
+      await assert.rejects(() => client.listSessions(), /authorization failed \(401\)/)
     },
   )
 })

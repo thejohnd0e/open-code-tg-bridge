@@ -10,7 +10,7 @@ export function createTranscriber({ url, token, fetchImpl = fetch, timeoutMs = 1
         body: form,
         signal: AbortSignal.timeout(timeoutMs),
       })
-      if (res.status === 401) throw new Error('whisper 401: неверный токен распознавания')
+      if (res.status === 401) throw new Error('whisper 401: invalid transcription token')
       if (!res.ok) throw new Error(`whisper ${res.status}`)
       const payload = await res.json()
       return (payload?.text ?? '').trim()

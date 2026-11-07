@@ -44,3 +44,13 @@ test('ошибка сервиса превращается в исключени
     },
   )
 })
+
+test('unauthorized transcription reports an English error', async () => {
+  await withServer(
+    (req, res) => res.writeHead(401).end(),
+    async (url) => {
+      const transcriber = createTranscriber({ url, token: 'secret' })
+      await assert.rejects(() => transcriber.transcribe({ dataBase64: 'AAA=', mime: 'audio/ogg' }), /whisper 401: invalid transcription token/)
+    },
+  )
+})

@@ -16,7 +16,6 @@ receive a completion notification for any session, and approve tool requests.
 | [api-notes.md](api-notes.md) | OpenCode API behavior verified in practice |
 | [2026-11-03-telegram-bridge-design.md](2026-11-03-telegram-bridge-design.md) | Original goals, constraints, and design |
 | [2026-11-03-voice-design.md](2026-11-03-voice-design.md) | Voice transcription design |
-| [plans/2026-11-03-telegram-bridge.md](plans/2026-11-03-telegram-bridge.md) | Historical implementation plan |
 
 ## At a glance
 

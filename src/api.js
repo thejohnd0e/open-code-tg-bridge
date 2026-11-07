@@ -22,7 +22,7 @@ export function createClient({ url, password, fetchImpl = fetch, timeoutMs = DEF
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs),
     })
-    if (res.status === 401) throw new Error('авторизация OpenCode не прошла (401): проверьте OPENCODE_TOKEN')
+    if (res.status === 401) throw new Error('OpenCode authorization failed (401): check OPENCODE_TOKEN')
     if (!res.ok) {
       const text = await res.text().catch(() => '')
       throw new Error(`OpenCode ${method} ${path} → ${res.status}: ${text.slice(0, 200)}`)
@@ -91,7 +91,7 @@ export function createClient({ url, password, fetchImpl = fetch, timeoutMs = DEF
         headers: { authorization: auth, accept: 'text/event-stream' },
         signal,
       })
-      if (res.status === 401) throw new Error('авторизация OpenCode не прошла (401): проверьте OPENCODE_TOKEN')
+      if (res.status === 401) throw new Error('OpenCode authorization failed (401): check OPENCODE_TOKEN')
       if (!res.ok) throw new Error(`OpenCode GET /api/event → ${res.status}`)
       const decoder = new TextDecoder()
       let buffer = ''

@@ -1,7 +1,7 @@
 # Telegram as a persistent interface to OpenCode — design
 
 Date: 2026-11-03. Status: original design; notification behavior was superseded
-by the approved [all-session completion notification design](superpowers/specs/2026-11-03-all-session-completion-notifications-design.md).
+by the [current architecture](architecture.md).
 
 ## Purpose
 

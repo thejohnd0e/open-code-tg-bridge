@@ -43,3 +43,11 @@ CLAUDE.md
 STATUS.md
 DECISIONS.md
 TODO.md
+
+# Voice service secret token
+voice-service/token.txt
+
+# Local agent plans and workflow state
+.superpowers/
+docs/superpowers/
+docs/plans/

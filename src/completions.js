@@ -120,7 +120,7 @@ export function createCompletionTracker({
       const beforeEvent = Number.isFinite(event.created)
         ? afterCursor.filter((record) => record.created <= event.created)
         : afterCursor
-      // One SSE success event corresponds to one turn. If multiple events are
+    // One SSE success event corresponds to one turn. If multiple events are
       // queued during baseline/reconnect, the per-session queue advances one
       // matching idle record at a time instead of collapsing to the latest.
       pending = beforeEvent.length ? [beforeEvent[0]] : afterCursor.length ? [afterCursor[0]] : []
