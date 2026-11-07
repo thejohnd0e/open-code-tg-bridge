@@ -1,4 +1,6 @@
+#!/usr/bin/env node
 import { createServer } from 'node:http'
+import { loadEnvFile } from 'node:process'
 import { createStore } from './state.js'
 import { createClient } from './api.js'
 import { buildConfig } from './config.js'
@@ -8,6 +10,12 @@ import { createBot } from './bot.js'
 import { startWithRetry } from './retry.js'
 import { startServices } from './services.js'
 import { createTranscriber } from './whisper.js'
+
+try {
+  loadEnvFile()
+} catch (error) {
+  if (error.code !== 'ENOENT') throw error
+}
 
 const env = process.env
 const log = (...args) => console.log(new Date().toISOString(), ...args)

@@ -65,7 +65,21 @@ Once a session is selected:
 
 ### Quick Start
 
-#### Run with Node.js
+#### Run from npm
+
+Create a `.env` file in your working directory with the variables listed below.
+Keep it private and do not commit it; it contains credentials. Existing
+environment variables take precedence over values in `.env`.
+
+```bash
+npx open-code-tg-bridge
+```
+
+Alternatively, install globally with `npm install -g open-code-tg-bridge` and
+run `open-code-tg-bridge` from the directory containing your `.env` file.
+The optional Whisper service is deployed separately; see the voice guide below.
+
+#### Run from a source checkout
 
 ```bash
 npm install

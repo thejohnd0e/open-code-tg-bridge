@@ -1,7 +1,16 @@
 {
-  "name": "tg-bridge",
+  "name": "open-code-tg-bridge",
   "version": "0.1.0",
-  "private": true,
+  "description": "Control and monitor OpenCode sessions from Telegram",
+  "license": "MIT",
+  "author": "thejohnd0e",
+  "repository": "github:thejohnd0e/open-code-tg-bridge",
+  "bugs": "https://github.com/thejohnd0e/open-code-tg-bridge/issues",
+  "homepage": "https://github.com/thejohnd0e/open-code-tg-bridge#readme",
+  "keywords": ["opencode", "telegram", "bot", "bridge"],
+  "engines": { "node": ">=22" },
+  "bin": { "open-code-tg-bridge": "./src/index.js" },
+  "files": ["src/", ".env.example", "docs/README.md", "docs/architecture.md", "docs/deploy.md", "docs/operations.md", "docs/troubleshooting.md", "docs/voice-service.md", "docs/api-notes.md"],
   "type": "module",
   "scripts": {
     "test": "node --test",
